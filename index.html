@@ -1,0 +1,1084 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hybrid Power System Sizing Tool</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+<script src="https://cdn.tailwindcss.com"></script>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.3.1",
+    "react-dom": "https://esm.sh/react-dom@18.3.1",
+    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client",
+    "recharts": "https://esm.sh/recharts@2.15.0?deps=react@18.3.1,react-dom@18.3.1"
+  }
+}
+</script>
+<style>
+  body { margin: 0; }
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button { opacity: 1; }
+</style>
+</head>
+<body>
+<div id="root">
+  <div style="display:flex;align-items:center;justify-content:center;height:100vh;background:#0b1120;color:white;font-family:sans-serif">
+    <div style="text-align:center">
+      <div style="font-size:48px;margin-bottom:16px">⚡</div>
+      <div style="font-size:18px;opacity:0.7">Loading Hybrid Power System Sizing Tool...</div>
+    </div>
+  </div>
+</div>
+<script type="module">
+import React, { useState, useCallback } from 'react';
+import { createRoot } from 'react-dom/client';
+import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area, ComposedChart, ReferenceLine } from 'recharts';
+
+try {
+
+
+
+const LOCATIONS = [
+    { name: 'Perth, WA', lat: -31.95, lon: 115.86 },
+    { name: 'Darwin, NT', lat: -12.46, lon: 130.84 },
+    { name: 'Karratha, WA', lat: -20.74, lon: 116.85 },
+    { name: 'Alice Springs, NT', lat: -23.70, lon: 133.88 },
+    { name: 'Kalgoorlie, WA', lat: -30.75, lon: 121.47 },
+    { name: 'Broome, WA', lat: -17.96, lon: 122.24 },
+    { name: 'Mt Isa, QLD', lat: -20.73, lon: 139.49 },
+    { name: 'Coober Pedy, SA', lat: -29.01, lon: 134.76 },
+    { name: 'Townsville, QLD', lat: -19.25, lon: 146.77 },
+    { name: 'Custom', lat: -25, lon: 130 },
+];
+const LOAD_PATTERNS = {
+    flat: { label: 'Flat 500kW', data: Array(24).fill(500) },
+    commercial: { label: 'Commercial', data: [200, 200, 200, 200, 200, 250, 400, 600, 700, 750, 800, 800, 750, 800, 800, 750, 700, 600, 500, 400, 350, 300, 250, 200] },
+    industrial: { label: 'Industrial 24/7', data: [400, 400, 400, 400, 400, 500, 700, 900, 950, 1000, 1000, 1000, 950, 1000, 1000, 950, 900, 700, 500, 450, 400, 400, 400, 400] },
+    mining: { label: 'Mining Camp', data: [300, 250, 250, 250, 250, 300, 500, 700, 650, 600, 600, 600, 600, 650, 650, 600, 550, 500, 600, 700, 650, 500, 400, 350] },
+    processing: { label: 'Processing Plant', data: [800, 800, 800, 800, 800, 850, 1000, 1200, 1200, 1200, 1200, 1200, 1200, 1200, 1200, 1200, 1000, 900, 850, 800, 800, 800, 800, 800] },
+    resort: { label: 'Remote Resort', data: [150, 120, 100, 100, 100, 120, 200, 350, 400, 350, 300, 300, 350, 350, 300, 300, 350, 400, 500, 550, 500, 400, 300, 200] },
+    telecoms: { label: 'Telecoms Tower', data: Array(24).fill(50) },
+};
+const DIESEL_MODELS = [
+    { name: 'Small (<100kW)', sfcBase: 0.28, sfcPart: 0.35, maintCost: 35 },
+    { name: 'Medium (100-500kW)', sfcBase: 0.24, sfcPart: 0.30, maintCost: 45 },
+    { name: 'Large (500-2000kW)', sfcBase: 0.21, sfcPart: 0.27, maintCost: 55 },
+    { name: 'High Speed (>2MW)', sfcBase: 0.20, sfcPart: 0.25, maintCost: 70 },
+];
+const BATTERY_TYPES = [
+    { name: 'LFP (Lithium Iron Phosphate)', dod: 0.9, cycles: 6000, efficiency: 0.92, degradation: 2 },
+    { name: 'NMC (Nickel Manganese Cobalt)', dod: 0.85, cycles: 4000, efficiency: 0.94, degradation: 3 },
+    { name: 'Lead Acid (AGM)', dod: 0.5, cycles: 1500, efficiency: 0.82, degradation: 5 },
+    { name: 'Vanadium Redox Flow', dod: 0.95, cycles: 15000, efficiency: 0.75, degradation: 0.5 },
+];
+const PV_TYPES = [
+    { name: 'Mono PERC', efficiency: 0.20, degradation: 0.5, tempCoeff: -0.35 },
+    { name: 'Bifacial Mono PERC', efficiency: 0.21, degradation: 0.45, tempCoeff: -0.35 },
+    { name: 'HJT (Heterojunction)', efficiency: 0.22, degradation: 0.4, tempCoeff: -0.26 },
+    { name: 'TOPCon', efficiency: 0.225, degradation: 0.4, tempCoeff: -0.30 },
+    { name: 'Thin Film (CdTe)', efficiency: 0.17, degradation: 0.7, tempCoeff: -0.20 },
+];
+const TRACKING = [
+    { name: 'Fixed Tilt', factor: 1.0 },
+    { name: 'Single Axis Tracker', factor: 1.22 },
+    { name: 'Dual Axis Tracker', factor: 1.35 },
+];
+const fmtK = (v) => v >= 1e6 ? '$' + (v / 1e6).toFixed(1) + 'M' : v >= 1e3 ? '$' + (v / 1e3).toFixed(0) + 'K' : '$' + v;
+const fmtN = (v) => typeof v === 'number' ? v.toLocaleString('en-AU') : v;
+const COLORS = { solar: '#f59e0b', battery: '#3b82f6', diesel: '#ef4444', load: '#10b981', card: '#1e293b' };
+function Collapsible({ title, icon, children, defaultOpen = false, borderColor = 'border-slate-700' }) {
+    const [open, setOpen] = useState(defaultOpen);
+    return (React.createElement("div", { className: 'rounded-lg border ' + borderColor + ' overflow-hidden', style: { background: COLORS.card } },
+        React.createElement("button", { onClick: () => setOpen(!open), className: "w-full flex items-center justify-between px-5 py-3 hover:bg-slate-700/30 transition-colors" },
+            React.createElement("div", { className: "flex items-center gap-2 text-lg font-semibold" },
+                icon,
+                title),
+            open ? React.createElement("span", null, "\u25BC") : React.createElement("span", null, "\u25B6")),
+        open && React.createElement("div", { className: "px-5 pb-5 pt-2" }, children)));
+}
+function Stat({ label, value, sub, color = 'from-slate-700 to-slate-800' }) {
+    return (React.createElement("div", { className: 'bg-gradient-to-br ' + color + ' rounded-lg p-4 border border-slate-700/50' },
+        React.createElement("div", { className: "text-2xl font-bold tracking-tight" }, value),
+        React.createElement("div", { className: "text-sm text-slate-300 mt-0.5" }, label),
+        sub && React.createElement("div", { className: "text-xs text-slate-400 mt-1" }, sub)));
+}
+function TooltipHint({ text }) {
+    const [show, setShow] = useState(false);
+    return (React.createElement("span", { className: "relative inline-block ml-1" },
+        React.createElement("span", null, "\u24D8"),
+        show && React.createElement("span", { className: "absolute z-50 bg-slate-900 border border-slate-600 text-xs text-slate-300 rounded px-3 py-2 w-56 -top-2 left-6 shadow-lg" }, text)));
+}
+function InputField({ label, value, onChange, unit, hint, step, min, max }) {
+    return (React.createElement("div", null,
+        React.createElement("label", { className: "text-xs text-slate-400 flex items-center gap-1" },
+            label,
+            hint && React.createElement(TooltipHint, { text: hint })),
+        React.createElement("div", { className: "flex items-center gap-1" },
+            React.createElement("input", { type: "number", value: value, onChange: onChange, step: step, min: min, max: max, className: "w-full bg-slate-700/80 border border-slate-600 rounded px-2 py-1.5 text-sm focus:border-emerald-500 focus:outline-none transition-colors" }),
+            unit && React.createElement("span", { className: "text-xs text-slate-500 whitespace-nowrap" }, unit))));
+}
+function HybridPowerSizing() {
+    const [location, setLocation] = useState(LOCATIONS[0]);
+    const [loads, setLoads] = useState([...LOAD_PATTERNS.commercial.data]);
+    const [loadScale, setLoadScale] = useState(1);
+    const [renewable, setRenewable] = useState(70);
+    const [pvType, setPvType] = useState(0);
+    const [tracking, setTracking] = useState(0);
+    const [battType, setBattType] = useState(0);
+    const [dieselModel, setDieselModel] = useState(1);
+    const [costs, setCosts] = useState({ pv: 1100, batt: 800, diesel: 450, fuel: 1.85, bos: 15, epc: 12, land: 0 });
+    const [opex, setOpex] = useState({ pvOM: 15, battOM: 10, dieselOM: 0, dieselOMauto: true, insurance: 0.5, siteManagement: 0, networkFees: 0, spares: 0, envCompliance: 0, waterChem: 0, remoteMonitoring: 0 });
+    const [finance, setFinance] = useState({ fuelEsc: 3, discount: 8, projectLife: 25, inflationRate: 2.5, taxRate: 30, depreciationYears: 7 });
+    const [adv, setAdv] = useState({
+        pr: 0.82, hours: 4, crate: 0.5,
+        renewDays: 0, dfStart: 10, dfEnd: 16,
+        minPV: 0, maxPV: 15000, minBatt: 0, maxBatt: 50000, maxPow: 15000,
+        dieselSize: 0, dieselQty: 1, autoSize: true, battChargeSrc: 'both',
+        soiling: 3, mismatch: 2, inverterEff: 96.5, dcacRatio: 1.2,
+        dieselMinLoad: 30, spinningResvPct: 10, battReplacementYear: 12,
+    });
+    const [projectInfo, setProjectInfo] = useState({ name: 'Hybrid Power Feasibility Study', client: '', reference: '', engineer: '', date: new Date().toISOString().split('T')[0], revision: 'A' });
+    const [results, setResults] = useState(null);
+    const [tab, setTab] = useState('config');
+    const [subTab, setSubTab] = useState('overview');
+    const [warnings, setWarnings] = useState([]);
+    const getSolar = useCallback((m, lat) => {
+        const perthData = [7.4, 6.6, 5.9, 4.8, 3.9, 3.6, 3.8, 4.6, 5.7, 6.8, 7.5, 7.7];
+        const darwinData = [5.8, 5.5, 5.9, 6.3, 6.0, 5.8, 6.2, 6.8, 7.2, 7.2, 6.8, 6.1];
+        const aliceData = [7.2, 6.8, 6.5, 5.8, 5.0, 4.5, 5.0, 5.8, 6.8, 7.5, 7.6, 7.5];
+        if (Math.abs(lat + 31.95) < 1)
+            return perthData[m];
+        if (Math.abs(lat + 12.46) < 2)
+            return darwinData[m];
+        if (Math.abs(lat + 23.70) < 2)
+            return aliceData[m];
+        const base = [5.5, 6, 5.5, 4.5, 3.5, 3, 3.2, 4, 5, 6, 6.5, 6];
+        return base[lat < 0 ? m : (m + 6) % 12] * (1 - Math.abs(lat) / 90 * 0.4);
+    }, []);
+    const calc = () => {
+        const w = [];
+        const scaledLoads = loads.map(l => l * loadScale);
+        const avg = scaledLoads.reduce((a, b) => a + b) / 24;
+        if (avg <= 0) {
+            alert('Invalid loads');
+            return;
+        }
+        const peak = Math.max(...scaledLoads);
+        const minLoad = Math.min(...scaledLoads);
+        const loadFactor = avg / peak;
+        const annual = avg * 8760;
+        const renew = annual * renewable / 100;
+        const trackFactor = TRACKING[tracking].factor;
+        const pvSpec = PV_TYPES[pvType];
+        const battSpec = BATTERY_TYPES[battType];
+        const dieselSpec = DIESEL_MODELS[dieselModel];
+        const derate = (1 - adv.soiling / 100) * (1 - adv.mismatch / 100) * (adv.inverterEff / 100);
+        const effectivePR = adv.pr * trackFactor;
+        const detailedDerate = derate; // for display only
+        const avgSol = Array.from({ length: 12 }, (_, i) => getSolar(i, location.lat)).reduce((a, b) => a + b) / 12;
+        // PV sizing: Annual yield per kWp = PSH * 365 * PR * tracking
+        const annualYieldPerKWp = avgSol * 365 * effectivePR;
+        let pv = renew / annualYieldPerKWp;
+        let dfLoad = 0;
+        if (adv.renewDays > 0) {
+            for (let h = adv.dfStart; h < adv.dfEnd; h++)
+                dfLoad += scaledLoads[h % 24];
+            pv += dfLoad * adv.renewDays * 1.3 / annualYieldPerKWp;
+            w.push('Sized for ' + adv.renewDays + ' diesel-free days');
+        }
+        let batt = avg * adv.hours / battSpec.dod;
+        if (adv.renewDays > 0)
+            batt = Math.max(batt, dfLoad / ((adv.dfEnd - adv.dfStart) || 1) * 6 / battSpec.dod);
+        let pow = Math.min(batt * adv.crate, peak * (1 + adv.spinningResvPct / 100));
+        pv = Math.max(adv.minPV, Math.min(adv.maxPV, pv));
+        const pvInverter = Math.round(pv / adv.dcacRatio);
+        batt = Math.max(adv.minBatt, Math.min(adv.maxBatt, batt));
+        pow = Math.max(0, Math.min(adv.maxPow, pow));
+        let dCap, dQty;
+        if (adv.autoSize) {
+            dCap = peak * 1.2;
+            dQty = 1;
+        }
+        else {
+            dQty = Math.max(1, adv.dieselQty);
+            dCap = adv.dieselSize * dQty;
+            if (dCap < peak)
+                w.push('Diesel (' + Math.round(dCap) + 'kW) < peak (' + Math.round(peak) + 'kW)');
+        }
+        let dEn = annual - renew;
+        if (adv.renewDays > 0)
+            dEn = Math.max(0, dEn - dfLoad * adv.renewDays * 0.8);
+        const lf = dCap > 0 ? dEn / 8760 / dCap : 0;
+        const sfcEff = lf < 0.3 ? dieselSpec.sfcPart : lf < 0.5 ? (dieselSpec.sfcBase + dieselSpec.sfcPart) / 2 : dieselSpec.sfcBase;
+        const fuel = dEn * sfcEff;
+        if (lf < 0.3 && renewable > 70)
+            w.push('Low diesel load factor: ' + (lf * 100).toFixed(0) + '%');
+        const pvCost = pv * costs.pv;
+        const battCost = batt * costs.batt;
+        const dieselCost = dCap * costs.diesel;
+        const bosCost = (pvCost + battCost) * costs.bos / 100;
+        const epcCost = (pvCost + battCost + dieselCost + bosCost) * costs.epc / 100;
+        const hCap = pvCost + battCost + dieselCost + bosCost + epcCost + costs.land;
+        const dCap2 = peak * 1.2 * costs.diesel * 1.1;
+        const projLife = finance.projectLife;
+        const battReplYr = adv.battReplacementYear;
+        let hNPV = -hCap, dNPV = -dCap2, cumH = hCap, cumD = dCap2;
+        const cf = [{ year: 0, hybridCumulative: -hCap, dieselCumulative: -dCap2, savings: 0, hybridAnnual: hCap, dieselAnnual: dCap2 }];
+        const annualCosts = [];
+        const dieselOMrate = opex.dieselOMauto ? dieselSpec.maintCost : opex.dieselOM;
+        const fixedSiteOpex = opex.siteManagement + opex.networkFees + opex.spares + opex.envCompliance + opex.waterChem + opex.remoteMonitoring;
+        const insuranceCost = hCap * opex.insurance / 100;
+        for (let y = 1; y <= projLife; y++) {
+            const d = Math.pow(1 + finance.discount / 100, -y);
+            const fe = Math.pow(1 + finance.fuelEsc / 100, y - 1);
+            const inf = Math.pow(1 + finance.inflationRate / 100, y - 1);
+            const pvOM = pv * opex.pvOM * inf, battOM = batt * opex.battOM * inf, dieselOM = dCap * dieselOMrate * inf;
+            const insOM = insuranceCost * inf, siteOM = fixedSiteOpex * inf;
+            const fuelCostH = fuel * costs.fuel * fe;
+            const hO = pvOM + battOM + dieselOM + fuelCostH + insOM + siteOM;
+            const dFuel = annual * sfcEff * costs.fuel * fe;
+            const dMaint = peak * 1.2 * dieselSpec.maintCost * 1.5 * inf;
+            const dInsOM = dCap2 * opex.insurance / 100 * inf;
+            const dO = dMaint + dFuel + dInsOM;
+            let hY = hO;
+            if (y === battReplYr) {
+                const rc = batt * costs.batt * 0.7;
+                hY += rc;
+                hNPV -= rc * d;
+            }
+            hNPV -= hO * d;
+            dNPV -= dO * d;
+            cumH += hY;
+            cumD += dO;
+            cf.push({ year: y, hybridCumulative: -cumH, dieselCumulative: -cumD, savings: cumD - cumH, hybridAnnual: hY, dieselAnnual: dO });
+            annualCosts.push({ year: y, hybridFuel: Math.round(fuelCostH), hybridMaint: Math.round(pvOM + battOM + dieselOM), hybridInsurance: Math.round(insOM), hybridSite: Math.round(siteOM), dieselFuel: Math.round(dFuel), dieselMaint: Math.round(dMaint), dieselInsurance: Math.round(dInsOM) });
+        }
+        const mon = Array.from({ length: 12 }, (_, i) => {
+            const s = getSolar(i, location.lat) * pv * 30 * effectivePR;
+            const l = avg * 24 * 30;
+            const dg = Math.max(0, l - s);
+            const fm = dg * sfcEff;
+            return { month: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][i],
+                solar: Math.round(s), diesel: Math.round(dg), load: Math.round(l),
+                solarHours: getSolar(i, location.lat).toFixed(1), fuelLitres: Math.round(fm),
+                fuelCost: Math.round(fm * costs.fuel), renewFraction: Math.round((s / l) * 100) };
+        });
+        const seasons = ['Summer', 'Autumn', 'Winter', 'Spring'].map((name, idx) => {
+            const m = [0, 3, 6, 9][idx];
+            const sh = getSolar(m, location.lat);
+            const minSOC = batt * (1 - battSpec.dod);
+            const maxSOC = batt;
+            // Run 3 days to reach steady-state SOC cycle; use last day
+            let battSOC = minSOC;
+            var dayData;
+            for (var day = 0; day < 3; day++) {
+                dayData = [];
+                for (var h = 0; h < 24; h++) {
+                    var socBefore = battSOC;
+                    var sgDC = h >= 6 && h <= 18 ? pv * (sh * Math.PI / 24) * Math.sin(((h - 6) / 12) * Math.PI) * effectivePR : 0;
+                    var sg = Math.min(sgDC, pvInverter);
+                    var bc = 0, bd = 0, dg = 0, curt = 0;
+                    var avail = Math.max(0, battSOC - minSOC);
+                    var space = Math.max(0, maxSOC - battSOC);
+                    var net = sg - scaledLoads[h];
+                    if (net > 0) {
+                        if (adv.battChargeSrc === 'pv' || adv.battChargeSrc === 'both') {
+                            var chargeIn = Math.min(net, pow, space / battSpec.efficiency);
+                            bc = chargeIn * battSpec.efficiency;
+                            battSOC += bc;
+                            curt = Math.max(0, net - chargeIn);
+                        }
+                        else {
+                            curt = net;
+                        }
+                    }
+                    else if (net < 0) {
+                        var def = -net;
+                        if (avail > 1) {
+                            bd = Math.min(def, pow, avail);
+                            battSOC -= bd;
+                        }
+                        var still = def - bd;
+                        if (still > 0.1)
+                            dg = still;
+                    }
+                    dayData.push({ hour: h, load: Math.round(scaledLoads[h]), solar: Math.round(Math.max(0, sg)),
+                        battCharge: Math.round(bc), battChargeNeg: Math.round(-bc), battDischarge: Math.round(bd),
+                        diesel: Math.round(dg), curtailed: Math.round(curt),
+                        soc: Math.round((socBefore / batt) * 100), socKWh: Math.round(battSOC) });
+                }
+            }
+            var hourly = dayData;
+            const ts = hourly.reduce((a, h) => a + h.solar, 0), td = hourly.reduce((a, h) => a + h.diesel, 0);
+            const tl = hourly.reduce((a, h) => a + h.load, 0), tc = hourly.reduce((a, h) => a + h.curtailed, 0);
+            return { name, data: hourly, totalSolar: ts, totalDiesel: td, totalLoad: tl, totalCurtailed: tc, renewFraction: Math.round(ts / tl * 100) };
+        });
+        const co2D = annual * sfcEff * 2.7 / 1000, co2H = dEn * sfcEff * 2.7 / 1000, co2S = co2D - co2H;
+        const sensFuel = [1.2, 1.5, 1.85, 2.2, 2.6, 3.0].map(fp => {
+            let sH = hCap, sD = dCap2;
+            for (let y = 1; y <= projLife; y++) {
+                const fe = Math.pow(1 + finance.fuelEsc / 100, y - 1), inf = Math.pow(1 + finance.inflationRate / 100, y - 1);
+                sH += (pv * opex.pvOM + batt * opex.battOM + dCap * dieselOMrate + insuranceCost + fixedSiteOpex) * inf + fuel * fp * fe;
+                sD += (peak * 1.2 * dieselSpec.maintCost * 1.5 + dCap2 * opex.insurance / 100) * inf + annual * sfcEff * fp * fe;
+                if (y === battReplYr)
+                    sH += batt * costs.batt * 0.7;
+            }
+            return { fuelPrice: '$' + fp.toFixed(2), hybridLCOE: (sH / (annual * projLife)).toFixed(3), dieselLCOE: (sD / (annual * projLife)).toFixed(3), savings: Math.round((sD - sH) / 1000) };
+        });
+        const sensRenew = [30, 50, 70, 85, 95].map(rp => {
+            const rEn = annual * rp / 100, rPv = rEn / annualYieldPerKWp, rBatt = avg * (rp > 80 ? 6 : 4) / battSpec.dod;
+            return { renewPct: rp + '%', capex: Math.round((rPv * costs.pv + rBatt * costs.batt + dCap * costs.diesel) / 1000), pvSize: Math.round(rPv), battSize: Math.round(rBatt) };
+        });
+        setWarnings(w);
+        var yr1PvOM = pv * opex.pvOM, yr1BattOM = batt * opex.battOM, yr1DieselOM = dCap * dieselOMrate;
+        var yr1Fuel = fuel * costs.fuel, yr1Ins = insuranceCost, yr1Site = fixedSiteOpex;
+        var yr1HOpex = yr1PvOM + yr1BattOM + yr1DieselOM + yr1Fuel + yr1Ins + yr1Site;
+        var yr1DFuel = annual * sfcEff * costs.fuel, yr1DMaint = peak * 1.2 * dieselSpec.maintCost * 1.5;
+        var yr1DIns = dCap2 * opex.insurance / 100, yr1DOpex = yr1DFuel + yr1DMaint + yr1DIns;
+        setResults({
+            pv: Math.round(pv), pvInverter: pvInverter, dcacRatio: adv.dcacRatio,
+            batt: Math.round(batt), pow: Math.round(pow), diesel: Math.round(dCap),
+            dSize: adv.autoSize ? Math.round(dCap) : adv.dieselSize, dQty,
+            annual: Math.round(annual), renew: Math.round(renew), dEn: Math.round(dEn),
+            hCap: Math.round(hCap), dCap2: Math.round(dCap2),
+            pvCost: Math.round(pvCost), battCost: Math.round(battCost), dieselCostCapex: Math.round(dieselCost),
+            bosCost: Math.round(bosCost), epcCost: Math.round(epcCost),
+            hOpex: Math.round((cumH - hCap) / projLife), dOpex: Math.round((cumD - dCap2) / projLife),
+            savings: Math.round((cumD - cumH) / projLife), npv: Math.round(dNPV - hNPV),
+            payback: ((hCap - dCap2) / ((cumD - cumH) / projLife)).toFixed(1),
+            lcoeH: (cumH / (annual * projLife)).toFixed(3), lcoeD: (cumD / (annual * projLife)).toFixed(3),
+            mon, cf, annualCosts, seasons,
+            avg: Math.round(avg), peak: Math.round(peak), minLoad: Math.round(minLoad), loadFactor: (loadFactor * 100).toFixed(1),
+            fuel: Math.round(fuel), co2S: Math.round(co2S), co2D: Math.round(co2D), co2H: Math.round(co2H),
+            treesEquiv: Math.round(co2S * 1000 / 22), lf: (lf * 100).toFixed(1),
+            dieselRunHrs: Math.round(dEn / (dCap * lf || 1)), dieselFuelAnn: Math.round(fuel), dieselOnlyFuelAnn: Math.round(annual * sfcEff),
+            sensFuel, sensRenew, effectivePR: (effectivePR * 100).toFixed(1), sfcEff: sfcEff.toFixed(3), scaledLoads,
+            pvToLoad: (pv / peak).toFixed(1), battHoursActual: (batt / avg).toFixed(1), pvCF: ((pv > 0 ? renew / pv / 8760 : 0) * 100).toFixed(1),
+            yr1PvOM: Math.round(yr1PvOM), yr1BattOM: Math.round(yr1BattOM), yr1DieselOM: Math.round(yr1DieselOM),
+            yr1Fuel: Math.round(yr1Fuel), yr1Ins: Math.round(yr1Ins), yr1Site: Math.round(yr1Site), yr1HOpex: Math.round(yr1HOpex),
+            yr1DFuel: Math.round(yr1DFuel), yr1DMaint: Math.round(yr1DMaint), yr1DIns: Math.round(yr1DIns), yr1DOpex: Math.round(yr1DOpex),
+        });
+        setTab('results');
+        setSubTab('overview');
+    };
+    const setPattern = (key) => setLoads([...LOAD_PATTERNS[key].data]);
+    const generateReport = () => {
+        if (!results)
+            return;
+        const r = results, pi = projectInfo, bt = BATTERY_TYPES[battType], pt = PV_TYPES[pvType], tr = TRACKING[tracking], dm = DIESEL_MODELS[dieselModel];
+        const avgSolVal = (Array.from({ length: 12 }, (_, i) => getSolar(i, location.lat)).reduce((a, b) => a + b) / 12).toFixed(1);
+        const html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>' + pi.name + '</title><style>' +
+            "@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');" +
+            '*{margin:0;padding:0;box-sizing:border-box}body{font-family:Inter,sans-serif;color:#1e293b;line-height:1.6;background:#fff}' +
+            '.cover{background:linear-gradient(135deg,#0f172a,#1e3a5f 50%,#064e3b);color:white;padding:80px 60px;min-height:40vh;display:flex;flex-direction:column;justify-content:flex-end;page-break-after:always}' +
+            '.cover h1{font-size:36px;font-weight:700;margin-bottom:12px}.cover h2{font-size:18px;font-weight:300;opacity:0.85;margin-bottom:40px}' +
+            '.cover-meta{display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;opacity:0.8;max-width:500px}.cover-meta span{font-weight:600}' +
+            '.content{padding:40px 60px;max-width:900px;margin:0 auto}' +
+            'h2{font-size:22px;font-weight:700;color:#0f172a;border-bottom:3px solid #10b981;padding-bottom:8px;margin:40px 0 20px}' +
+            'h3{font-size:16px;font-weight:600;color:#334155;margin:24px 0 12px}' +
+            'table{width:100%;border-collapse:collapse;margin:16px 0;font-size:13px}' +
+            'th{background:#f1f5f9;padding:10px 12px;text-align:left;font-weight:600;border-bottom:2px solid #e2e8f0}' +
+            'td{padding:8px 12px;border-bottom:1px solid #f1f5f9}' +
+            '.mg{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin:20px 0}' +
+            '.m{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px;text-align:center}' +
+            '.m .v{font-size:24px;font-weight:700;color:#0f172a}.m .l{font-size:12px;color:#64748b;margin-top:4px}.m .s{font-size:11px;color:#94a3b8;margin-top:2px}' +
+            '.hl{background:linear-gradient(135deg,#ecfdf5,#f0fdf4);border:1px solid #86efac;border-radius:8px;padding:20px;margin:20px 0}' +
+            '.hl .big{font-size:28px;font-weight:700;color:#059669}' +
+            '.warn{background:#fef3c7;border:1px solid #fbbf24;border-radius:6px;padding:12px;margin:10px 0;font-size:13px;color:#92400e}' +
+            '.disc{font-size:11px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:20px;margin-top:40px}' +
+            '.section{page-break-inside:avoid}' +
+            '@media print{.cover{min-height:100vh}body{font-size:12px}h2{page-break-before:auto}}' +
+            '</style></head><body>' +
+            '<div class="cover"><h1>' + pi.name + '</h1>' +
+            '<h2>' + location.name + ' — ' + r.pv + ' kWp DC | ' + fmtN(r.pvInverter) + ' kW AC | ' + r.batt + ' kWh Battery | ' + r.diesel + ' kW Diesel</h2>' +
+            '<div class="cover-meta">' +
+            (pi.client ? '<div>Client: <span>' + pi.client + '</span></div>' : '') +
+            (pi.reference ? '<div>Reference: <span>' + pi.reference + '</span></div>' : '') +
+            (pi.engineer ? '<div>Prepared by: <span>' + pi.engineer + '</span></div>' : '') +
+            '<div>Date: <span>' + pi.date + '</span></div><div>Revision: <span>' + pi.revision + '</span></div><div>Status: <span>PRELIMINARY</span></div>' +
+            '</div></div>' +
+            '<div class="content">' +
+            '<h2>1. Executive Summary</h2>' +
+            '<p>This report presents the preliminary feasibility analysis for a hybrid solar-battery-diesel power system at <strong>' + location.name + '</strong> (' + location.lat.toFixed(2) + ', ' + location.lon.toFixed(2) + '). The proposed system targets <strong>' + renewable + '% renewable energy fraction</strong> to serve an average load of <strong>' + fmtN(r.avg) + ' kW</strong> (peak ' + fmtN(r.peak) + ' kW).</p>' +
+            '<div class="mg">' +
+            '<div class="m"><div class="v">' + fmtN(r.pv) + ' kWp</div><div class="l">Solar PV (DC)</div><div class="s">' + fmtN(r.pvInverter) + ' kW AC inv.</div></div>' +
+            '<div class="m"><div class="v">' + fmtN(r.batt) + ' kWh</div><div class="l">Battery Storage</div><div class="s">' + bt.name + ', ' + r.pow + ' kW</div></div>' +
+            '<div class="m"><div class="v">' + fmtN(r.diesel) + ' kW</div><div class="l">Diesel Generator</div><div class="s">' + (r.dQty > 1 ? r.dQty + 'x' + r.dSize + 'kW' : 'Single unit') + '</div></div>' +
+            '<div class="m"><div class="v">' + r.payback + ' yrs</div><div class="l">Payback</div><div class="s">vs diesel-only</div></div>' +
+            '</div>' +
+            '<div class="hl"><div class="big">' + fmtK(r.npv) + ' NPV Benefit over ' + finance.projectLife + ' Years</div>' +
+            '<p style="margin-top:8px;color:#065f46">Annual savings of <strong>' + fmtK(r.savings) + '</strong> with CO2 reduction of <strong>' + fmtN(r.co2S) + ' tonnes/year</strong>.</p></div>' +
+            (warnings.length > 0 ? '<div class="warn"><strong>Notes:</strong> ' + warnings.join(' | ') + '</div>' : '') +
+            '<h2>2. Site & Load Analysis</h2><div class="section">' +
+            '<h3>2.1 Location</h3><table><tr><th>Parameter</th><th>Value</th></tr>' +
+            '<tr><td>Site</td><td>' + location.name + '</td></tr>' +
+            '<tr><td>Coordinates</td><td>' + location.lat.toFixed(4) + ', ' + location.lon.toFixed(4) + '</td></tr>' +
+            '<tr><td>Avg Solar Resource</td><td>' + avgSolVal + ' kWh/m2/day</td></tr></table>' +
+            '<h3>2.2 Load Profile</h3><table><tr><th>Parameter</th><th>Value</th></tr>' +
+            '<tr><td>Average Demand</td><td>' + fmtN(r.avg) + ' kW</td></tr>' +
+            '<tr><td>Peak Demand</td><td>' + fmtN(r.peak) + ' kW</td></tr>' +
+            '<tr><td>Min Demand</td><td>' + fmtN(r.minLoad) + ' kW</td></tr>' +
+            '<tr><td>Load Factor</td><td>' + r.loadFactor + '%</td></tr>' +
+            '<tr><td>Annual Energy</td><td>' + fmtN(r.annual) + ' kWh</td></tr></table></div>' +
+            '<h2>3. System Design</h2><div class="section">' +
+            '<h3>3.1 Solar PV</h3><table><tr><th>Parameter</th><th>Value</th></tr>' +
+            '<tr><td>Array Capacity (DC)</td><td>' + fmtN(r.pv) + ' kWp</td></tr>' +
+            '<tr><td>Inverter Capacity (AC)</td><td>' + fmtN(r.pvInverter) + ' kW</td></tr>' +
+            '<tr><td>DC:AC Ratio</td><td>' + r.dcacRatio + '</td></tr>' +
+            '<tr><td>Technology</td><td>' + pt.name + '</td></tr>' +
+            '<tr><td>Tracking</td><td>' + tr.name + '</td></tr>' +
+            '<tr><td>Performance Ratio</td><td>' + r.effectivePR + '%</td></tr>' +
+            '<tr><td>Degradation</td><td>' + pt.degradation + '%/yr</td></tr>' +
+            '<tr><td>Annual Generation</td><td>' + fmtN(r.renew) + ' kWh</td></tr></table>' +
+            '<h3>3.2 Battery</h3><table><tr><th>Parameter</th><th>Value</th></tr>' +
+            '<tr><td>Energy</td><td>' + fmtN(r.batt) + ' kWh</td></tr>' +
+            '<tr><td>Power</td><td>' + fmtN(r.pow) + ' kW</td></tr>' +
+            '<tr><td>Technology</td><td>' + bt.name + '</td></tr>' +
+            '<tr><td>DoD</td><td>' + (bt.dod * 100) + '%</td></tr>' +
+            '<tr><td>Efficiency</td><td>' + (bt.efficiency * 100) + '%</td></tr>' +
+            '<tr><td>Cycle Life</td><td>' + fmtN(bt.cycles) + '</td></tr>' +
+            '<tr><td>Replacement</td><td>Year ' + adv.battReplacementYear + '</td></tr></table>' +
+            '<h3>3.3 Diesel</h3><table><tr><th>Parameter</th><th>Value</th></tr>' +
+            '<tr><td>Capacity</td><td>' + fmtN(r.diesel) + ' kW</td></tr>' +
+            '<tr><td>Class</td><td>' + dm.name + '</td></tr>' +
+            '<tr><td>SFC</td><td>' + r.sfcEff + ' L/kWh</td></tr>' +
+            '<tr><td>Annual Run Hours</td><td>' + fmtN(r.dieselRunHrs) + ' hrs</td></tr>' +
+            '<tr><td>Fuel (Hybrid)</td><td>' + fmtN(r.dieselFuelAnn) + ' L</td></tr>' +
+            '<tr><td>Fuel (Diesel Only)</td><td>' + fmtN(r.dieselOnlyFuelAnn) + ' L</td></tr>' +
+            '<tr><td>Fuel Saving</td><td>' + fmtN(r.dieselOnlyFuelAnn - r.dieselFuelAnn) + ' L (' + Math.round((1 - r.dieselFuelAnn / r.dieselOnlyFuelAnn) * 100) + '%)</td></tr></table></div>' +
+            '<h2>4. Energy Balance</h2><div class="section">' +
+            '<table><tr><th>Source</th><th>Annual (kWh)</th><th>Fraction</th></tr>' +
+            '<tr><td>Solar</td><td>' + fmtN(r.renew) + '</td><td>' + renewable + '%</td></tr>' +
+            '<tr><td>Diesel</td><td>' + fmtN(r.dEn) + '</td><td>' + (100 - renewable) + '%</td></tr>' +
+            '<tr><td><strong>Total</strong></td><td><strong>' + fmtN(r.annual) + '</strong></td><td>100%</td></tr></table>' +
+            '<h3>Monthly Production</h3><table><tr><th>Month</th><th>Solar</th><th>Diesel</th><th>PSH</th><th>Fuel (L)</th><th>RE%</th></tr>' +
+            r.mon.map(function (m) { return '<tr><td>' + m.month + '</td><td>' + fmtN(m.solar) + '</td><td>' + fmtN(m.diesel) + '</td><td>' + m.solarHours + '</td><td>' + fmtN(m.fuelLitres) + '</td><td>' + m.renewFraction + '%</td></tr>'; }).join('') +
+            '</table></div>' +
+            '<h2>5. Financial Analysis</h2><div class="section">' +
+            '<h3>5.1 Capital Costs</h3><table><tr><th>Item</th><th>Cost (AUD)</th><th>%</th></tr>' +
+            '<tr><td>Solar PV</td><td>$' + fmtN(r.pvCost) + '</td><td>' + (r.pvCost / r.hCap * 100).toFixed(1) + '%</td></tr>' +
+            '<tr><td>Battery</td><td>$' + fmtN(r.battCost) + '</td><td>' + (r.battCost / r.hCap * 100).toFixed(1) + '%</td></tr>' +
+            '<tr><td>Diesel</td><td>$' + fmtN(r.dieselCostCapex) + '</td><td>' + (r.dieselCostCapex / r.hCap * 100).toFixed(1) + '%</td></tr>' +
+            '<tr><td>BOS</td><td>$' + fmtN(r.bosCost) + '</td><td>' + (r.bosCost / r.hCap * 100).toFixed(1) + '%</td></tr>' +
+            '<tr><td>EPC</td><td>$' + fmtN(r.epcCost) + '</td><td>' + (r.epcCost / r.hCap * 100).toFixed(1) + '%</td></tr>' +
+            '<tr style="font-weight:700;border-top:2px solid #0f172a"><td>Total Hybrid</td><td>$' + fmtN(r.hCap) + '</td><td>100%</td></tr>' +
+            '<tr><td>Diesel-Only Baseline</td><td>$' + fmtN(r.dCap2) + '</td><td>-</td></tr></table>' +
+            '<h3>5.2 Economic Summary</h3><table><tr><th>Metric</th><th>Value</th></tr>' +
+            '<tr><td>Payback</td><td>' + r.payback + ' years</td></tr>' +
+            '<tr><td>NPV (Savings)</td><td>$' + fmtN(r.npv) + '</td></tr>' +
+            '<tr><td>LCOE Hybrid</td><td>' + r.lcoeH + ' $/kWh</td></tr>' +
+            '<tr><td>LCOE Diesel Only</td><td>' + r.lcoeD + ' $/kWh</td></tr>' +
+            '<tr><td>Discount Rate</td><td>' + finance.discount + '%</td></tr>' +
+            '<tr><td>Fuel Escalation</td><td>' + finance.fuelEsc + '%/yr</td></tr>' +
+            '<tr><td>Project Life</td><td>' + finance.projectLife + ' years</td></tr>' +
+            '<tr><td>Annual Savings</td><td>$' + fmtN(r.savings) + '</td></tr></table>' +
+            '<h3>5.3 Year 1 Operating Costs</h3>' +
+            '<table><tr><th>Item</th><th>Hybrid (AUD)</th><th>Diesel Only (AUD)</th></tr>' +
+            '<tr><td>Component O&amp;M</td><td>$' + fmtN(r.yr1PvOM + r.yr1BattOM + r.yr1DieselOM) + '</td><td>$' + fmtN(r.yr1DMaint) + '</td></tr>' +
+            '<tr><td>Fuel</td><td>$' + fmtN(r.yr1Fuel) + '</td><td>$' + fmtN(r.yr1DFuel) + '</td></tr>' +
+            '<tr><td>Insurance</td><td>$' + fmtN(r.yr1Ins) + '</td><td>$' + fmtN(r.yr1DIns) + '</td></tr>' +
+            (r.yr1Site ? '<tr><td>Site/Fixed Costs</td><td>$' + fmtN(r.yr1Site) + '</td><td>-</td></tr>' : '') +
+            '<tr style="font-weight:700;border-top:2px solid #0f172a"><td>Total Year 1 OPEX</td><td>$' + fmtN(r.yr1HOpex) + '</td><td>$' + fmtN(r.yr1DOpex) + '</td></tr>' +
+            '<tr><td>OPEX per kWh</td><td>' + (r.yr1HOpex / r.annual).toFixed(3) + ' $/kWh</td><td>' + (r.yr1DOpex / r.annual).toFixed(3) + ' $/kWh</td></tr></table>' +
+            '<h3>5.4 Fuel Price Sensitivity</h3><table><tr><th>Fuel ($/L)</th><th>Hybrid LCOE</th><th>Diesel LCOE</th><th>Savings ($K)</th></tr>' +
+            r.sensFuel.map(function (s) { return '<tr><td>' + s.fuelPrice + '</td><td>' + s.hybridLCOE + '</td><td>' + s.dieselLCOE + '</td><td>' + fmtN(s.savings) + '</td></tr>'; }).join('') +
+            '</table></div>' +
+            '<h2>6. Environmental Impact</h2><div class="section"><table><tr><th>Metric</th><th>Value</th></tr>' +
+            '<tr><td>CO2 Diesel Only</td><td>' + fmtN(r.co2D) + ' t/yr</td></tr>' +
+            '<tr><td>CO2 Hybrid</td><td>' + fmtN(r.co2H) + ' t/yr</td></tr>' +
+            '<tr><td>CO2 Reduction</td><td>' + fmtN(r.co2S) + ' t/yr</td></tr>' +
+            '<tr><td>Lifetime CO2 Saved</td><td>' + fmtN(r.co2S * finance.projectLife) + ' t</td></tr>' +
+            '<tr><td>Fuel Saved</td><td>' + fmtN(r.dieselOnlyFuelAnn - r.dieselFuelAnn) + ' L/yr</td></tr></table></div>' +
+            '<h2>7. Assumptions</h2><div class="section"><ul style="font-size:13px;color:#475569;padding-left:20px">' +
+            '<li>Solar resource based on TMY estimates</li><li>Load profile assumed constant year-round</li>' +
+            '<li>Battery replacement at year ' + adv.battReplacementYear + ' at 70% cost</li>' +
+            '<li>PV O&amp;M: $' + opex.pvOM + '/kW/yr, Battery O&amp;M: $' + opex.battOM + '/kWh/yr, Insurance: ' + opex.insurance + '% CAPEX/yr</li>' +
+            '<li>Fuel escalation ' + finance.fuelEsc + '% p.a. from $' + costs.fuel + '/L</li>' +
+            '<li>All costs AUD, ex-GST</li><li>Fully off-grid configuration</li>' +
+            '<li>This is a preliminary estimate - detailed design requires time-series simulation</li></ul></div>' +
+            '<div class="disc"><p><strong>DISCLAIMER:</strong> This is a preliminary feasibility estimate. All figures are indicative. Independent verification recommended before investment decisions.</p>' +
+            '<p style="margin-top:12px">Generated ' + new Date().toLocaleDateString('en-AU', { year: 'numeric', month: 'long', day: 'numeric' }) + ' | ' + pi.name + ' | Rev ' + pi.revision + '</p></div>' +
+            '</div></body></html>';
+        const blob = new Blob([html], { type: 'text/html' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = pi.name.replace(/[^a-zA-Z0-9]/g, '_') + '_Rev' + pi.revision + '.html';
+        a.click();
+        URL.revokeObjectURL(url);
+    };
+    const tabs = [
+        { id: 'config', label: 'Configuration', icon: React.createElement("span", null, "\u2699\uFE0F") },
+        { id: 'results', label: 'Results', icon: React.createElement("span", null, "\uD83D\uDCCA") },
+        { id: 'report', label: 'Report', icon: React.createElement("span", null, "\uD83D\uDCC4") },
+    ];
+    const resultTabs = ['overview', 'energy', 'operations', 'financial', 'sensitivity', 'environmental'].map(id => ({ id, label: id.charAt(0).toUpperCase() + id.slice(1) }));
+    return (React.createElement("div", { className: "min-h-screen text-white", style: { background: 'linear-gradient(145deg,#0b1120,#0f1a2e 40%,#0a1628)' } },
+        React.createElement("div", { className: "max-w-7xl mx-auto px-4 py-6" },
+            React.createElement("div", { className: "flex items-center justify-between mb-6" },
+                React.createElement("div", null,
+                    React.createElement("h1", { className: "text-3xl font-bold tracking-tight" },
+                        React.createElement("span", { className: "bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent" }, "\u26A1 Hybrid Power System Sizing")),
+                    React.createElement("p", { className: "text-slate-500 text-sm mt-1" }, "Solar \u2022 Battery \u2022 Diesel Microgrid Feasibility Tool")),
+                results && React.createElement("button", { onClick: generateReport, className: "flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-lg shadow-emerald-900/30" },
+                    React.createElement("span", null, "\uD83D\uDCE5"),
+                    " Export Report")),
+            warnings.length > 0 && React.createElement("div", { className: "mb-4 bg-amber-900/20 border border-amber-700/50 rounded-lg p-3" }, warnings.map((w, i) => React.createElement("div", { key: i, className: "flex gap-2 items-center text-sm text-amber-300" },
+                React.createElement("span", null, "\u26A0\uFE0F"),
+                w))),
+            React.createElement("div", { className: "flex gap-1 mb-5 bg-slate-800/50 rounded-lg p-1 w-fit" }, tabs.map(t => React.createElement("button", { key: t.id, onClick: () => setTab(t.id), className: 'flex items-center gap-2 px-5 py-2 rounded-md text-sm font-medium transition-all ' + (tab === t.id ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50') },
+                t.icon,
+                t.label))),
+            tab === 'config' && (React.createElement("div", { className: "space-y-3" },
+                React.createElement(Collapsible, { title: "Project Information", icon: React.createElement("span", null, "\uD83D\uDCC4") },
+                    React.createElement("div", { className: "grid grid-cols-3 gap-3" },
+                        [['Project Name', 'name'], ['Client', 'client'], ['Reference', 'reference'], ['Engineer', 'engineer']].map(([l, k]) => React.createElement("div", { key: k },
+                            React.createElement("label", { className: "text-xs text-slate-400" }, l),
+                            React.createElement("input", { value: projectInfo[k], onChange: e => setProjectInfo({ ...projectInfo, [k]: e.target.value }), className: "w-full bg-slate-700/80 border border-slate-600 rounded px-2 py-1.5 text-sm" }))),
+                        React.createElement("div", null,
+                            React.createElement("label", { className: "text-xs text-slate-400" }, "Date"),
+                            React.createElement("input", { type: "date", value: projectInfo.date, onChange: e => setProjectInfo({ ...projectInfo, date: e.target.value }), className: "w-full bg-slate-700/80 border border-slate-600 rounded px-2 py-1.5 text-sm" })),
+                        React.createElement("div", null,
+                            React.createElement("label", { className: "text-xs text-slate-400" }, "Revision"),
+                            React.createElement("input", { value: projectInfo.revision, onChange: e => setProjectInfo({ ...projectInfo, revision: e.target.value }), className: "w-full bg-slate-700/80 border border-slate-600 rounded px-2 py-1.5 text-sm" })))),
+                React.createElement(Collapsible, { title: "Site Location", icon: React.createElement("span", null, "\u2600\uFE0F"), defaultOpen: true },
+                    React.createElement("div", { className: "grid grid-cols-4 gap-3 mb-3" },
+                        React.createElement("div", { className: "col-span-2" },
+                            React.createElement("label", { className: "text-xs text-slate-400" }, "Preset Location"),
+                            React.createElement("select", { value: LOCATIONS.findIndex(l => l.name === location.name), onChange: e => setLocation({ ...LOCATIONS[e.target.value] }), className: "w-full bg-slate-700/80 border border-slate-600 rounded px-2 py-1.5 text-sm" }, LOCATIONS.map((l, i) => React.createElement("option", { key: i, value: i },
+                                l.name,
+                                " (",
+                                l.lat.toFixed(1),
+                                "\u00B0)")))),
+                        React.createElement(InputField, { label: "Latitude", value: location.lat, onChange: e => setLocation({ ...location, lat: parseFloat(e.target.value) || 0 }) }),
+                        React.createElement(InputField, { label: "Longitude", value: location.lon, onChange: e => setLocation({ ...location, lon: parseFloat(e.target.value) || 0 }) })),
+                    React.createElement("div", { className: "bg-slate-900/50 rounded-lg p-3" },
+                        React.createElement("div", { className: "text-xs text-slate-400 mb-2" }, "Monthly Solar Irradiance (kWh/m\u00B2/day)"),
+                        React.createElement("div", { className: "flex gap-1" }, ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'].map((m, i) => { const v = getSolar(i, location.lat); return (React.createElement("div", { key: i, className: "flex-1 text-center" },
+                            React.createElement("div", { className: "relative h-16 flex items-end justify-center" },
+                                React.createElement("div", { className: "w-full rounded-t", style: { height: (v / 8 * 100) + '%', background: 'linear-gradient(to top,#f59e0b,#fbbf24)' } })),
+                            React.createElement("div", { className: "text-[10px] text-slate-500 mt-1" }, m),
+                            React.createElement("div", { className: "text-[10px] text-amber-400 font-medium" }, v.toFixed(1)))); })))),
+                React.createElement(Collapsible, { title: "Load Profile", icon: React.createElement("span", null, "\u26A1"), defaultOpen: true },
+                    React.createElement("div", { className: "flex flex-wrap gap-2 mb-3" }, Object.entries(LOAD_PATTERNS).map(([k, v]) => React.createElement("button", { key: k, onClick: () => setPattern(k), className: "px-3 py-1 bg-slate-700 hover:bg-emerald-700 rounded text-xs transition-colors" }, v.label))),
+                    React.createElement("div", { className: "flex items-center gap-3 mb-3" },
+                        React.createElement("label", { className: "text-xs text-slate-400" }, "Scale:"),
+                        React.createElement("input", { type: "range", min: "0.1", max: "5", step: "0.1", value: loadScale, onChange: e => setLoadScale(parseFloat(e.target.value)), className: "flex-1" }),
+                        React.createElement("span", { className: "text-sm font-mono text-emerald-400 w-12" },
+                            loadScale,
+                            "\u00D7")),
+                    React.createElement("div", { className: "mb-3 relative", style: { height: '200px', background: '#0f172a', borderRadius: '8px', padding: '16px' } },
+                        React.createElement("svg", { width: "100%", height: "100%", style: { position: 'absolute', top: 0, left: 0, pointerEvents: 'none' }, preserveAspectRatio: "none", viewBox: "0 0 100 200" },
+                            React.createElement("defs", null,
+                                React.createElement("linearGradient", { id: "lg", x1: "0", y1: "0", x2: "0", y2: "1" },
+                                    React.createElement("stop", { offset: "0%", stopColor: "#10b981", stopOpacity: "0.4" }),
+                                    React.createElement("stop", { offset: "100%", stopColor: "#10b981", stopOpacity: "0.05" }))),
+                            React.createElement("path", { d: 'M 0 200 ' + loads.map((v, i) => 'L ' + (i / 23 * 100) + ' ' + (200 - v * loadScale / Math.max(...loads.map(l => l * loadScale), 1) * 160)).join(' ') + ' L 100 200 Z', fill: "url(#lg)" }),
+                            React.createElement("polyline", { points: loads.map((v, i) => (i / 23 * 100) + ',' + (200 - v * loadScale / Math.max(...loads.map(l => l * loadScale), 1) * 160)).join(' '), fill: "none", stroke: "#10b981", strokeWidth: "2.5" })),
+                        loads.map((ld, i) => React.createElement("div", { key: i, style: { position: 'absolute', left: (i / 23 * 100) + '%', top: (200 - ld * loadScale / Math.max(...loads.map(l => l * loadScale), 1) * 160) + 'px', width: '14px', height: '14px', marginLeft: '-7px', marginTop: '-7px', background: '#10b981', border: '2px solid white', borderRadius: '50%', cursor: 'ns-resize', zIndex: 10 }, onMouseDown: e => { const sy = e.clientY, sl = loads[i], mx = Math.max(...loads, 1); const mv = me => { const nl = Math.max(0, Math.min(mx * 3, sl + (sy - me.clientY) * 3)); const n = [...loads]; n[i] = Math.round(nl); setLoads(n); }; const up = () => { document.removeEventListener('mousemove', mv); document.removeEventListener('mouseup', up); }; document.addEventListener('mousemove', mv); document.addEventListener('mouseup', up); }, title: 'Hour ' + i + ': ' + Math.round(ld * loadScale) + ' kW' })),
+                        React.createElement("div", { className: "absolute bottom-1 left-3 text-[10px] text-slate-500" }, "0h"),
+                        React.createElement("div", { className: "absolute bottom-1 right-3 text-[10px] text-slate-500" }, "23h"),
+                        React.createElement("div", { className: "absolute top-2 left-3 text-[10px] text-slate-500" },
+                            "Peak: ",
+                            Math.round(Math.max(...loads) * loadScale),
+                            " kW | Avg: ",
+                            Math.round(loads.reduce((a, b) => a + b) / 24 * loadScale),
+                            " kW")),
+                    React.createElement("div", { className: "grid grid-cols-12 gap-1" }, loads.map((l, i) => React.createElement("input", { key: i, type: "number", value: Math.round(l * loadScale), onChange: e => { const n = [...loads]; n[i] = Math.max(0, (parseFloat(e.target.value) || 0) / loadScale); setLoads(n); }, className: "bg-slate-700/60 border border-slate-600/50 rounded px-1 py-1 text-[10px] text-center", title: 'Hour ' + i + ': ' + Math.round(l * loadScale) + ' kW' })))),
+                React.createElement(Collapsible, { title: 'Renewable Target: ' + renewable + '%', icon: React.createElement("span", null, "\uD83C\uDF3F"), defaultOpen: true },
+                    React.createElement("input", { type: "range", min: "0", max: "100", value: renewable, onChange: e => setRenewable(parseInt(e.target.value)), className: "w-full" }),
+                    React.createElement("div", { className: "flex justify-between text-xs text-slate-500 mt-1" },
+                        React.createElement("span", null, "0%"),
+                        React.createElement("span", null, "50%"),
+                        React.createElement("span", null, "100%"))),
+                React.createElement(Collapsible, { title: "Solar PV Configuration", icon: React.createElement("span", null, "\u2600\uFE0F"), borderColor: "border-yellow-800/40" },
+                    React.createElement("div", { className: "grid grid-cols-3 gap-4" },
+                        React.createElement("div", null,
+                            React.createElement("label", { className: "text-xs text-slate-400" }, "Module Technology"),
+                            React.createElement("select", { value: pvType, onChange: e => setPvType(parseInt(e.target.value)), className: "w-full bg-slate-700/80 border border-slate-600 rounded px-2 py-1.5 text-sm" }, PV_TYPES.map((p, i) => React.createElement("option", { key: i, value: i },
+                                p.name,
+                                " (",
+                                (p.efficiency * 100).toFixed(1),
+                                "%)")))),
+                        React.createElement("div", null,
+                            React.createElement("label", { className: "text-xs text-slate-400" }, "Tracking"),
+                            React.createElement("select", { value: tracking, onChange: e => setTracking(parseInt(e.target.value)), className: "w-full bg-slate-700/80 border border-slate-600 rounded px-2 py-1.5 text-sm" }, TRACKING.map((t, i) => React.createElement("option", { key: i, value: i },
+                                t.name,
+                                " (x",
+                                t.factor,
+                                ")")))),
+                        React.createElement(InputField, { label: "DC:AC Ratio", value: adv.dcacRatio, onChange: e => setAdv({ ...adv, dcacRatio: parseFloat(e.target.value) || 1.2 }), step: "0.05", hint: "PV DC / Inverter AC. 1.0-1.5 typical" })),
+                    React.createElement("div", { className: "grid grid-cols-4 gap-3 mt-3" },
+                        React.createElement(InputField, { label: "Performance Ratio", value: adv.pr, onChange: e => setAdv({ ...adv, pr: parseFloat(e.target.value) || 0.8 }), step: "0.01", hint: "System derate factor" }),
+                        React.createElement(InputField, { label: "Soiling %", value: adv.soiling, onChange: e => setAdv({ ...adv, soiling: parseFloat(e.target.value) || 0 }), unit: "%" }),
+                        React.createElement(InputField, { label: "Mismatch %", value: adv.mismatch, onChange: e => setAdv({ ...adv, mismatch: parseFloat(e.target.value) || 0 }), unit: "%" }),
+                        React.createElement(InputField, { label: "Inverter Eff", value: adv.inverterEff, onChange: e => setAdv({ ...adv, inverterEff: parseFloat(e.target.value) || 96 }), unit: "%" })),
+                    React.createElement("div", { className: "grid grid-cols-2 gap-3 mt-3" },
+                        React.createElement(InputField, { label: "Min PV DC (kW)", value: adv.minPV, onChange: e => setAdv({ ...adv, minPV: parseFloat(e.target.value) || 0 }) }),
+                        React.createElement(InputField, { label: "Max PV DC (kW)", value: adv.maxPV, onChange: e => setAdv({ ...adv, maxPV: parseFloat(e.target.value) || 15000 }) }))),
+                React.createElement(Collapsible, { title: "Battery Storage", icon: React.createElement("span", null, "\uD83D\uDD0B"), borderColor: "border-blue-800/40" },
+                    React.createElement("div", { className: "grid grid-cols-2 gap-4" },
+                        React.createElement("div", null,
+                            React.createElement("label", { className: "text-xs text-slate-400" }, "Technology"),
+                            React.createElement("select", { value: battType, onChange: e => setBattType(parseInt(e.target.value)), className: "w-full bg-slate-700/80 border border-slate-600 rounded px-2 py-1.5 text-sm" }, BATTERY_TYPES.map((b, i) => React.createElement("option", { key: i, value: i }, b.name)))),
+                        React.createElement("div", null,
+                            React.createElement("label", { className: "text-xs text-slate-400" }, "Charging Source"),
+                            React.createElement("select", { value: adv.battChargeSrc, onChange: e => setAdv({ ...adv, battChargeSrc: e.target.value }), className: "w-full bg-slate-700/80 border border-slate-600 rounded px-2 py-1.5 text-sm" },
+                                React.createElement("option", { value: "both" }, "Both PV & Diesel"),
+                                React.createElement("option", { value: "pv" }, "PV Only"),
+                                React.createElement("option", { value: "diesel" }, "Diesel Only")))),
+                    React.createElement("div", { className: "grid grid-cols-4 gap-3 mt-3" },
+                        React.createElement(InputField, { label: "Storage Hours", value: adv.hours, onChange: e => setAdv({ ...adv, hours: parseFloat(e.target.value) || 4 }), unit: "hrs" }),
+                        React.createElement(InputField, { label: "C-Rate", value: adv.crate, onChange: e => setAdv({ ...adv, crate: parseFloat(e.target.value) || 0.5 }), step: "0.1" }),
+                        React.createElement(InputField, { label: "Replace Yr", value: adv.battReplacementYear, onChange: e => setAdv({ ...adv, battReplacementYear: parseInt(e.target.value) || 10 }) }),
+                        React.createElement(InputField, { label: "Max Power", value: adv.maxPow, onChange: e => setAdv({ ...adv, maxPow: parseFloat(e.target.value) || 15000 }), unit: "kW" })),
+                    React.createElement("div", { className: "grid grid-cols-2 gap-3 mt-3" },
+                        React.createElement(InputField, { label: "Min (kWh)", value: adv.minBatt, onChange: e => setAdv({ ...adv, minBatt: parseFloat(e.target.value) || 0 }) }),
+                        React.createElement(InputField, { label: "Max (kWh)", value: adv.maxBatt, onChange: e => setAdv({ ...adv, maxBatt: parseFloat(e.target.value) || 50000 }) })),
+                    React.createElement("div", { className: "mt-3 p-3 bg-slate-900/50 rounded text-xs text-slate-400" },
+                        React.createElement("strong", { className: "text-blue-400" },
+                            BATTERY_TYPES[battType].name,
+                            ":"),
+                        " DoD ",
+                        BATTERY_TYPES[battType].dod * 100,
+                        "% | Eff ",
+                        BATTERY_TYPES[battType].efficiency * 100,
+                        "% | ",
+                        fmtN(BATTERY_TYPES[battType].cycles),
+                        " cycles")),
+                React.createElement(Collapsible, { title: "Diesel Generator", icon: React.createElement("span", null, "\u26FD"), borderColor: "border-red-800/40" },
+                    React.createElement("div", { className: "grid grid-cols-2 gap-4" },
+                        React.createElement("div", null,
+                            React.createElement("label", { className: "text-xs text-slate-400" }, "Engine Class"),
+                            React.createElement("select", { value: dieselModel, onChange: e => setDieselModel(parseInt(e.target.value)), className: "w-full bg-slate-700/80 border border-slate-600 rounded px-2 py-1.5 text-sm" }, DIESEL_MODELS.map((d, i) => React.createElement("option", { key: i, value: i }, d.name)))),
+                        React.createElement("div", { className: "flex items-end" },
+                            React.createElement("label", { className: "flex items-center gap-2 pb-1" },
+                                React.createElement("input", { type: "checkbox", checked: adv.autoSize, onChange: e => setAdv({ ...adv, autoSize: e.target.checked }), className: "w-4 h-4 accent-emerald-500" }),
+                                React.createElement("span", { className: "text-sm" }, "Auto-size (1.2x peak)")))),
+                    !adv.autoSize && React.createElement("div", { className: "grid grid-cols-2 gap-3 mt-3" },
+                        React.createElement(InputField, { label: "Unit kW", value: adv.dieselSize, onChange: e => setAdv({ ...adv, dieselSize: parseFloat(e.target.value) || 0 }) }),
+                        React.createElement(InputField, { label: "Units", value: adv.dieselQty, onChange: e => setAdv({ ...adv, dieselQty: parseInt(e.target.value) || 1 }), min: "1" })),
+                    React.createElement("div", { className: "grid grid-cols-2 gap-3 mt-3" },
+                        React.createElement(InputField, { label: "Min Load %", value: adv.dieselMinLoad, onChange: e => setAdv({ ...adv, dieselMinLoad: parseFloat(e.target.value) || 30 }), unit: "%", hint: "Min load before shutoff" }),
+                        React.createElement(InputField, { label: "Spinning Reserve", value: adv.spinningResvPct, onChange: e => setAdv({ ...adv, spinningResvPct: parseFloat(e.target.value) || 10 }), unit: "%" }))),
+                React.createElement(Collapsible, { title: "Diesel-Free Operation", icon: React.createElement("span", null, "\uD83C\uDF3F"), borderColor: "border-emerald-800/40" },
+                    React.createElement("div", { className: "grid grid-cols-3 gap-3" },
+                        React.createElement(InputField, { label: "RE-Only Days/Yr", value: adv.renewDays, onChange: e => setAdv({ ...adv, renewDays: parseInt(e.target.value) || 0 }), min: "0", max: "365" }),
+                        React.createElement(InputField, { label: "Start Hour", value: adv.dfStart, onChange: e => setAdv({ ...adv, dfStart: parseInt(e.target.value) || 0 }), min: "0", max: "23" }),
+                        React.createElement(InputField, { label: "End Hour", value: adv.dfEnd, onChange: e => setAdv({ ...adv, dfEnd: parseInt(e.target.value) || 0 }), min: "0", max: "23" }))),
+                React.createElement(Collapsible, { title: "Cost Inputs", icon: React.createElement("span", null, "\uD83D\uDCB2"), defaultOpen: true },
+                    React.createElement("div", { className: "grid grid-cols-4 gap-3" },
+                        React.createElement(InputField, { label: "PV Installed", value: costs.pv, onChange: e => setCosts({ ...costs, pv: parseFloat(e.target.value) || 0 }), unit: "$/kW" }),
+                        React.createElement(InputField, { label: "Battery", value: costs.batt, onChange: e => setCosts({ ...costs, batt: parseFloat(e.target.value) || 0 }), unit: "$/kWh" }),
+                        React.createElement(InputField, { label: "Diesel Gen", value: costs.diesel, onChange: e => setCosts({ ...costs, diesel: parseFloat(e.target.value) || 0 }), unit: "$/kW" }),
+                        React.createElement(InputField, { label: "Fuel", value: costs.fuel, onChange: e => setCosts({ ...costs, fuel: parseFloat(e.target.value) || 0 }), unit: "$/L", step: "0.05" })),
+                    React.createElement("div", { className: "grid grid-cols-3 gap-3 mt-3" },
+                        React.createElement(InputField, { label: "BOS", value: costs.bos, onChange: e => setCosts({ ...costs, bos: parseFloat(e.target.value) || 0 }), unit: "%", hint: "Cabling, switchgear etc" }),
+                        React.createElement(InputField, { label: "EPC", value: costs.epc, onChange: e => setCosts({ ...costs, epc: parseFloat(e.target.value) || 0 }), unit: "%", hint: "Project management" }),
+                        React.createElement(InputField, { label: "Land/Site", value: costs.land, onChange: e => setCosts({ ...costs, land: parseFloat(e.target.value) || 0 }), unit: "$" })),
+                    React.createElement("h3", { className: "text-xs font-semibold text-orange-300 mt-4 mb-2 uppercase tracking-wider" }, "Operating Costs (OPEX)"),
+                    React.createElement("div", { className: "text-xs text-slate-500 mb-2" }, "Year 1 values, escalated by inflation annually."),
+                    React.createElement("div", { className: "grid grid-cols-4 gap-3" },
+                        React.createElement(InputField, { label: "PV O&M", value: opex.pvOM, onChange: e => setOpex({ ...opex, pvOM: parseFloat(e.target.value) || 0 }), unit: "$/kW/yr", hint: "Cleaning, inspections, inverter" }),
+                        React.createElement(InputField, { label: "Battery O&M", value: opex.battOM, onChange: e => setOpex({ ...opex, battOM: parseFloat(e.target.value) || 0 }), unit: "$/kWh/yr", hint: "BMS, thermal management" }),
+                        React.createElement(InputField, { label: "Diesel O&M", value: opex.dieselOMauto ? DIESEL_MODELS[dieselModel].maintCost : opex.dieselOM, onChange: e => setOpex({ ...opex, dieselOM: parseFloat(e.target.value) || 0, dieselOMauto: false }), unit: "$/kW/yr", hint: "Auto uses engine class default" }),
+                        React.createElement(InputField, { label: "Insurance", value: opex.insurance, onChange: e => setOpex({ ...opex, insurance: parseFloat(e.target.value) || 0 }), unit: "% cap/yr", hint: "Annual asset insurance" })),
+                    React.createElement("div", { className: "grid grid-cols-3 gap-3 mt-3" },
+                        React.createElement(InputField, { label: "Site Mgmt", value: opex.siteManagement, onChange: e => setOpex({ ...opex, siteManagement: parseFloat(e.target.value) || 0 }), unit: "$/yr", hint: "Staffing, security" }),
+                        React.createElement(InputField, { label: "Network/SCADA", value: opex.networkFees, onChange: e => setOpex({ ...opex, networkFees: parseFloat(e.target.value) || 0 }), unit: "$/yr" }),
+                        React.createElement(InputField, { label: "Spares", value: opex.spares, onChange: e => setOpex({ ...opex, spares: parseFloat(e.target.value) || 0 }), unit: "$/yr" }),
+                        React.createElement(InputField, { label: "Environmental", value: opex.envCompliance, onChange: e => setOpex({ ...opex, envCompliance: parseFloat(e.target.value) || 0 }), unit: "$/yr", hint: "Compliance, audits" }),
+                        React.createElement(InputField, { label: "Water/Chem", value: opex.waterChem, onChange: e => setOpex({ ...opex, waterChem: parseFloat(e.target.value) || 0 }), unit: "$/yr" }),
+                        React.createElement(InputField, { label: "Remote Mon.", value: opex.remoteMonitoring, onChange: e => setOpex({ ...opex, remoteMonitoring: parseFloat(e.target.value) || 0 }), unit: "$/yr" }))),
+                React.createElement(Collapsible, { title: "Financial Parameters", icon: React.createElement("span", null, "\uD83D\uDCC8"), borderColor: "border-cyan-800/40" },
+                    React.createElement("div", { className: "grid grid-cols-3 gap-3" },
+                        React.createElement(InputField, { label: "Discount Rate", value: finance.discount, onChange: e => setFinance({ ...finance, discount: parseFloat(e.target.value) || 8 }), unit: "%", hint: "WACC" }),
+                        React.createElement(InputField, { label: "Fuel Escalation", value: finance.fuelEsc, onChange: e => setFinance({ ...finance, fuelEsc: parseFloat(e.target.value) || 3 }), unit: "%/yr" }),
+                        React.createElement(InputField, { label: "Project Life", value: finance.projectLife, onChange: e => setFinance({ ...finance, projectLife: parseInt(e.target.value) || 25 }), unit: "yrs" }),
+                        React.createElement(InputField, { label: "Inflation", value: finance.inflationRate, onChange: e => setFinance({ ...finance, inflationRate: parseFloat(e.target.value) || 2.5 }), unit: "%" }),
+                        React.createElement(InputField, { label: "Tax Rate", value: finance.taxRate, onChange: e => setFinance({ ...finance, taxRate: parseFloat(e.target.value) || 30 }), unit: "%" }),
+                        React.createElement(InputField, { label: "Depreciation", value: finance.depreciationYears, onChange: e => setFinance({ ...finance, depreciationYears: parseInt(e.target.value) || 7 }), unit: "yrs" }))),
+                React.createElement("button", { onClick: calc, className: "w-full bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 font-bold py-4 rounded-lg text-lg transition-all shadow-lg shadow-emerald-900/30 active:scale-[0.99]" }, "\u26A1 Calculate System"))),
+            tab === 'results' && results && (React.createElement("div", { className: "space-y-4" },
+                React.createElement("div", { className: "flex gap-1 bg-slate-800/50 rounded-lg p-1 overflow-x-auto" }, resultTabs.map(t => React.createElement("button", { key: t.id, onClick: () => setSubTab(t.id), className: 'px-4 py-1.5 rounded text-xs font-medium whitespace-nowrap transition-all ' + (subTab === t.id ? 'bg-slate-700 text-white' : 'text-slate-500 hover:text-slate-300') }, t.label))),
+                subTab === 'overview' && (React.createElement("div", { className: "space-y-4" },
+                    React.createElement("div", { className: "grid grid-cols-5 gap-3" },
+                        React.createElement(Stat, { label: "Solar PV", value: fmtN(results.pv) + ' kWp DC', sub: 'Inverter: ' + fmtN(results.pvInverter) + ' kW AC (' + results.dcacRatio + 'x)', color: "from-amber-700/40 to-amber-900/40" }),
+                        React.createElement(Stat, { label: "Battery", value: fmtN(results.batt) + ' kWh', sub: results.pow + ' kW, ' + results.battHoursActual + 'h avg', color: "from-blue-700/40 to-blue-900/40" }),
+                        React.createElement(Stat, { label: "Diesel", value: fmtN(results.diesel) + ' kW', color: "from-red-700/40 to-red-900/40" }),
+                        React.createElement(Stat, { label: "Payback", value: results.payback + ' yrs', sub: "vs diesel-only", color: "from-emerald-700/40 to-emerald-900/40" }),
+                        React.createElement(Stat, { label: "NPV Savings", value: fmtK(results.npv), sub: finance.projectLife + '-year', color: "from-cyan-700/40 to-cyan-900/40" })),
+                    React.createElement("div", { className: "grid grid-cols-2 gap-4" },
+                        React.createElement("div", { className: "rounded-lg p-5 border border-slate-700", style: { background: COLORS.card } },
+                            React.createElement("h2", { className: "text-lg font-bold mb-3" }, "Cost Comparison"),
+                            React.createElement("div", { className: "grid grid-cols-2 gap-4" },
+                                React.createElement("div", null,
+                                    React.createElement("h3", { className: "text-emerald-400 text-sm font-semibold mb-2" }, "Hybrid"),
+                                    React.createElement("p", { className: "text-sm" },
+                                        "Capex: ",
+                                        React.createElement("strong", null, '$' + fmtN(results.hCap))),
+                                    React.createElement("p", { className: "text-sm" },
+                                        "Yr1 Opex: ",
+                                        React.createElement("strong", null, '$' + fmtN(results.yr1HOpex))),
+                                    React.createElement("p", { className: "text-sm" },
+                                        "LCOE: ",
+                                        React.createElement("strong", null, results.lcoeH),
+                                        " $/kWh")),
+                                React.createElement("div", null,
+                                    React.createElement("h3", { className: "text-red-400 text-sm font-semibold mb-2" }, "Diesel Only"),
+                                    React.createElement("p", { className: "text-sm" },
+                                        "Capex: ",
+                                        React.createElement("strong", null, '$' + fmtN(results.dCap2))),
+                                    React.createElement("p", { className: "text-sm" },
+                                        "Yr1 Opex: ",
+                                        React.createElement("strong", null, '$' + fmtN(results.yr1DOpex))),
+                                    React.createElement("p", { className: "text-sm" },
+                                        "LCOE: ",
+                                        React.createElement("strong", null, results.lcoeD),
+                                        " $/kWh"))),
+                            React.createElement("div", { className: "mt-4 pt-3 border-t border-slate-700" },
+                                React.createElement("div", { className: "text-2xl font-bold text-green-400" },
+                                    "Annual Savings: $",
+                                    fmtN(results.savings)))),
+                        React.createElement("div", { className: "rounded-lg p-5 border border-slate-700", style: { background: COLORS.card } },
+                            React.createElement("h2", { className: "text-lg font-bold mb-3" }, "Energy Mix"),
+                            React.createElement(ResponsiveContainer, { width: "100%", height: 200 },
+                                React.createElement(PieChart, null,
+                                    React.createElement(Pie, { data: [{ name: 'Solar', value: results.renew }, { name: 'Diesel', value: results.dEn }], cx: "50%", cy: "50%", innerRadius: 50, outerRadius: 80, dataKey: "value", label: ({ name, percent }) => name + ' ' + (percent * 100).toFixed(0) + '%' },
+                                        React.createElement(Cell, { fill: COLORS.solar }),
+                                        React.createElement(Cell, { fill: COLORS.diesel })),
+                                    React.createElement(Tooltip, { formatter: v => fmtN(v) + ' kWh' }))))),
+                    React.createElement("div", { className: "rounded-lg p-5 border border-slate-700", style: { background: COLORS.card } },
+                        React.createElement("h2", { className: "text-lg font-bold mb-3" }, "Capital Cost Breakdown"),
+                        React.createElement(ResponsiveContainer, { width: "100%", height: 220 },
+                            React.createElement(BarChart, { data: [{ n: 'Solar PV', c: results.pvCost }, { n: 'Battery', c: results.battCost }, { n: 'Diesel', c: results.dieselCostCapex }, { n: 'BOS', c: results.bosCost }, { n: 'EPC', c: results.epcCost }], layout: "vertical" },
+                                React.createElement(CartesianGrid, { strokeDasharray: "3 3", stroke: "#334155" }),
+                                React.createElement(XAxis, { type: "number", stroke: "#94a3b8", tickFormatter: v => fmtK(v) }),
+                                React.createElement(YAxis, { type: "category", dataKey: "n", stroke: "#94a3b8", width: 80 }),
+                                React.createElement(Tooltip, { contentStyle: { backgroundColor: '#1e293b', border: '1px solid #334155' }, formatter: v => '$' + fmtN(v) }),
+                                React.createElement(Bar, { dataKey: "c", fill: "#10b981", radius: [0, 4, 4, 0] })))),
+                    React.createElement("div", { className: "grid grid-cols-2 gap-4" },
+                        React.createElement("div", { className: "rounded-lg p-5 border border-slate-700", style: { background: COLORS.card } },
+                            React.createElement("h2", { className: "text-lg font-bold mb-3" }, 'Year 1 OPEX \u2014 Hybrid'),
+                            React.createElement(ResponsiveContainer, { width: "100%", height: 200 },
+                                React.createElement(BarChart, { data: [{ name: 'PV O&M', value: results.yr1PvOM }, { name: 'Batt O&M', value: results.yr1BattOM }, { name: 'Diesel O&M', value: results.yr1DieselOM }, { name: 'Fuel', value: results.yr1Fuel }, { name: 'Insurance', value: results.yr1Ins }, { name: 'Site', value: results.yr1Site }].filter(function (d) { return d.value; }), layout: "vertical" },
+                                    React.createElement(CartesianGrid, { strokeDasharray: "3 3", stroke: "#334155" }),
+                                    React.createElement(XAxis, { type: "number", stroke: "#94a3b8", tickFormatter: function (v) { return fmtK(v); } }),
+                                    React.createElement(YAxis, { type: "category", dataKey: "name", stroke: "#94a3b8", width: 80, tick: { fontSize: 11 } }),
+                                    React.createElement(Tooltip, { contentStyle: { backgroundColor: '#1e293b', border: '1px solid #334155' }, formatter: function (v) { return '$' + fmtN(v); } }),
+                                    React.createElement(Bar, { dataKey: "value", radius: [0, 4, 4, 0] }, [{ name: 'PV O&M', value: results.yr1PvOM }, { name: 'Batt O&M', value: results.yr1BattOM }, { name: 'Diesel O&M', value: results.yr1DieselOM }, { name: 'Fuel', value: results.yr1Fuel }, { name: 'Insurance', value: results.yr1Ins }, { name: 'Site', value: results.yr1Site }].filter(function (d) { return d.value; }).map(function (d, i) { return React.createElement(Cell, { key: i, fill: ['#f59e0b', '#3b82f6', '#ef4444', '#f97316', '#8b5cf6', '#06b6d4'][i] }); })))),
+                            React.createElement("div", { className: "text-sm text-slate-300 text-center mt-1" }, 'Total: $' + fmtN(results.yr1HOpex) + '/yr')),
+                        React.createElement("div", { className: "rounded-lg p-5 border border-slate-700", style: { background: COLORS.card } },
+                            React.createElement("h2", { className: "text-lg font-bold mb-3" }, 'Year 1 OPEX \u2014 Diesel Only'),
+                            React.createElement(ResponsiveContainer, { width: "100%", height: 200 },
+                                React.createElement(BarChart, { data: [{ name: 'Diesel O&M', value: results.yr1DMaint }, { name: 'Fuel', value: results.yr1DFuel }, { name: 'Insurance', value: results.yr1DIns }].filter(function (d) { return d.value; }), layout: "vertical" },
+                                    React.createElement(CartesianGrid, { strokeDasharray: "3 3", stroke: "#334155" }),
+                                    React.createElement(XAxis, { type: "number", stroke: "#94a3b8", tickFormatter: function (v) { return fmtK(v); } }),
+                                    React.createElement(YAxis, { type: "category", dataKey: "name", stroke: "#94a3b8", width: 80, tick: { fontSize: 11 } }),
+                                    React.createElement(Tooltip, { contentStyle: { backgroundColor: '#1e293b', border: '1px solid #334155' }, formatter: function (v) { return '$' + fmtN(v); } }),
+                                    React.createElement(Bar, { dataKey: "value", radius: [0, 4, 4, 0] }, [{ name: 'Diesel O&M', value: results.yr1DMaint }, { name: 'Fuel', value: results.yr1DFuel }, { name: 'Insurance', value: results.yr1DIns }].filter(function (d) { return d.value; }).map(function (d, i) { return React.createElement(Cell, { key: i, fill: ['#ef4444', '#f97316', '#8b5cf6'][i] }); })))),
+                            React.createElement("div", { className: "text-sm text-slate-300 text-center mt-1" }, 'Total: $' + fmtN(results.yr1DOpex) + '/yr'))))),
+                subTab === 'energy' && (React.createElement("div", { className: "space-y-4" },
+                    React.createElement("div", { className: "rounded-lg p-5 border border-slate-700", style: { background: COLORS.card } },
+                        React.createElement("h2", { className: "text-lg font-bold mb-3" }, "Monthly Energy & Renewable Fraction"),
+                        React.createElement(ResponsiveContainer, { width: "100%", height: 300 },
+                            React.createElement(ComposedChart, { data: results.mon },
+                                React.createElement(CartesianGrid, { strokeDasharray: "3 3", stroke: "#334155" }),
+                                React.createElement(XAxis, { dataKey: "month", stroke: "#94a3b8" }),
+                                React.createElement(YAxis, { yAxisId: "left", stroke: "#94a3b8" }),
+                                React.createElement(YAxis, { yAxisId: "right", orientation: "right", stroke: "#8b5cf6", domain: [0, 100] }),
+                                React.createElement(Tooltip, { contentStyle: { backgroundColor: '#1e293b', border: '1px solid #334155' } }),
+                                React.createElement(Legend, null),
+                                React.createElement(Bar, { yAxisId: "left", dataKey: "solar", fill: COLORS.solar, name: "Solar", stackId: "g" }),
+                                React.createElement(Bar, { yAxisId: "left", dataKey: "diesel", fill: COLORS.diesel, name: "Diesel", stackId: "g" }),
+                                React.createElement(Line, { yAxisId: "left", type: "monotone", dataKey: "load", stroke: COLORS.load, strokeWidth: 2, name: "Load", dot: false }),
+                                React.createElement(Line, { yAxisId: "right", type: "monotone", dataKey: "renewFraction", stroke: "#8b5cf6", strokeWidth: 2, name: "RE%", dot: true })))),
+                    React.createElement("div", { className: "rounded-lg p-5 border border-slate-700", style: { background: COLORS.card } },
+                        React.createElement("h2", { className: "text-lg font-bold mb-3" }, "Monthly Fuel Consumption & Cost"),
+                        React.createElement(ResponsiveContainer, { width: "100%", height: 250 },
+                            React.createElement(ComposedChart, { data: results.mon },
+                                React.createElement(CartesianGrid, { strokeDasharray: "3 3", stroke: "#334155" }),
+                                React.createElement(XAxis, { dataKey: "month", stroke: "#94a3b8" }),
+                                React.createElement(YAxis, { yAxisId: "left", stroke: "#94a3b8" }),
+                                React.createElement(YAxis, { yAxisId: "right", orientation: "right", stroke: "#22c55e" }),
+                                React.createElement(Tooltip, { contentStyle: { backgroundColor: '#1e293b', border: '1px solid #334155' } }),
+                                React.createElement(Legend, null),
+                                React.createElement(Bar, { yAxisId: "left", dataKey: "fuelLitres", fill: "#f97316", name: "Fuel (L)" }),
+                                React.createElement(Line, { yAxisId: "right", type: "monotone", dataKey: "fuelCost", stroke: "#22c55e", strokeWidth: 2, name: "Cost ($)" })))))),
+                subTab === 'operations' && (React.createElement("div", { className: "space-y-4" },
+                    React.createElement("div", { className: "rounded-lg p-5 border border-slate-700", style: { background: COLORS.card } },
+                        React.createElement("h2", { className: "text-lg font-bold mb-4" }, "Daily Power Flow by Season"),
+                        React.createElement("p", { className: "text-xs text-slate-400 mb-3" }, "Stacked = generation sources. Green line = load. Purple = SOC."),
+                        React.createElement("div", { className: "grid grid-cols-2 gap-4" }, results.seasons.map(s => (React.createElement("div", { key: s.name },
+                            React.createElement("h3", { className: "text-sm font-semibold mb-1 text-emerald-400" },
+                                s.name,
+                                " ",
+                                React.createElement("span", { className: "text-slate-500 font-normal" },
+                                    "(",
+                                    s.renewFraction,
+                                    "% RE)")),
+                            React.createElement(ResponsiveContainer, { width: "100%", height: 260 },
+                                React.createElement(ComposedChart, { data: s.data },
+                                    React.createElement(CartesianGrid, { strokeDasharray: "3 3", stroke: "#334155" }),
+                                    React.createElement(XAxis, { dataKey: "hour", stroke: "#94a3b8", tick: { fontSize: 10 } }),
+                                    React.createElement(YAxis, { yAxisId: "left", stroke: "#94a3b8", tick: { fontSize: 10 } }),
+                                    React.createElement(YAxis, { yAxisId: "right", orientation: "right", stroke: "#8b5cf6", domain: [0, 100], tick: { fontSize: 10 } }),
+                                    React.createElement(Tooltip, { contentStyle: { backgroundColor: '#1e293b', border: '1px solid #334155', fontSize: 11 }, formatter: function (v, n) { return n === 'SOC%' ? [v + '%', n] : [Math.abs(Math.round(v)) + ' kW', n]; } }),
+                                    React.createElement(Legend, { iconSize: 10, wrapperStyle: { fontSize: 10 } }),
+                                    React.createElement(Area, { yAxisId: "left", type: "monotone", dataKey: "battChargeNeg", stackId: "ch", stroke: "#06b6d4", fill: "#06b6d4", fillOpacity: 0.5, name: "Charging", isAnimationActive: false }),
+                                    React.createElement(Area, { yAxisId: "left", type: "monotone", dataKey: "solar", stackId: "gen", stroke: "#f59e0b", fill: "#f59e0b", fillOpacity: 0.6, name: "Solar", isAnimationActive: false }),
+                                    React.createElement(Area, { yAxisId: "left", type: "monotone", dataKey: "battDischarge", stackId: "gen", stroke: "#3b82f6", fill: "#3b82f6", fillOpacity: 0.6, name: "Battery", isAnimationActive: false }),
+                                    React.createElement(Area, { yAxisId: "left", type: "monotone", dataKey: "diesel", stackId: "gen", stroke: "#ef4444", fill: "#ef4444", fillOpacity: 0.6, name: "Diesel", isAnimationActive: false }),
+                                    React.createElement(Line, { yAxisId: "right", type: "monotone", dataKey: "soc", stroke: "#c084fc", strokeWidth: 2.5, name: "SOC%", dot: false, isAnimationActive: false }),
+                                    React.createElement(Line, { yAxisId: "left", type: "monotone", dataKey: "load", stroke: "#10b981", strokeWidth: 3, name: "Load", dot: false, isAnimationActive: false })))))))),
+                    React.createElement("div", { className: "grid grid-cols-4 gap-3" }, results.seasons.map(s => (React.createElement("div", { key: s.name, className: "rounded-lg p-4 border border-slate-700", style: { background: COLORS.card } },
+                        React.createElement("h3", { className: "text-sm font-semibold text-emerald-400 mb-2" }, s.name),
+                        React.createElement("div", { className: "text-xs space-y-1 text-slate-300" },
+                            React.createElement("p", null,
+                                "Solar: ",
+                                React.createElement("strong", null,
+                                    fmtN(s.totalSolar),
+                                    " kWh")),
+                            React.createElement("p", null,
+                                "Diesel: ",
+                                React.createElement("strong", null,
+                                    fmtN(s.totalDiesel),
+                                    " kWh")),
+                            React.createElement("p", null,
+                                "Curtailed: ",
+                                React.createElement("strong", null,
+                                    fmtN(s.totalCurtailed),
+                                    " kWh")),
+                            React.createElement("p", null,
+                                "RE: ",
+                                React.createElement("strong", { className: "text-emerald-400" },
+                                    s.renewFraction,
+                                    "%"))))))),
+                    React.createElement("div", { className: "grid grid-cols-3 gap-3" },
+                        React.createElement(Stat, { label: "Diesel Load Factor", value: results.lf + '%' }),
+                        React.createElement(Stat, { label: "Annual Run Hours", value: fmtN(results.dieselRunHrs) + ' hrs' }),
+                        React.createElement(Stat, { label: "Annual Fuel (Hybrid)", value: fmtN(results.dieselFuelAnn) + ' L', sub: 'Baseline: ' + fmtN(results.dieselOnlyFuelAnn) + ' L' })))),
+                subTab === 'financial' && (React.createElement("div", { className: "space-y-4" },
+                    React.createElement("div", { className: "rounded-lg p-5 border border-slate-700", style: { background: COLORS.card } },
+                        React.createElement("h2", { className: "text-lg font-bold mb-3" },
+                            "Cumulative Cost (",
+                            finance.projectLife,
+                            "-Year)"),
+                        React.createElement(ResponsiveContainer, { width: "100%", height: 300 },
+                            React.createElement(AreaChart, { data: results.cf },
+                                React.createElement(CartesianGrid, { strokeDasharray: "3 3", stroke: "#334155" }),
+                                React.createElement(XAxis, { dataKey: "year", stroke: "#94a3b8" }),
+                                React.createElement(YAxis, { stroke: "#94a3b8", tickFormatter: v => fmtK(Math.abs(v)) }),
+                                React.createElement(Tooltip, { contentStyle: { backgroundColor: '#1e293b', border: '1px solid #334155' }, formatter: v => '$' + fmtN(Math.abs(Math.round(v))) }),
+                                React.createElement(Legend, null),
+                                React.createElement(Area, { type: "monotone", dataKey: "hybridCumulative", stroke: "#10b981", fill: "#10b981", fillOpacity: 0.2, name: "Hybrid" }),
+                                React.createElement(Area, { type: "monotone", dataKey: "dieselCumulative", stroke: "#ef4444", fill: "#ef4444", fillOpacity: 0.2, name: "Diesel Only" })))),
+                    React.createElement("div", { className: "rounded-lg p-5 border border-slate-700", style: { background: COLORS.card } },
+                        React.createElement("h2", { className: "text-lg font-bold mb-3" }, "Cumulative Savings"),
+                        React.createElement(ResponsiveContainer, { width: "100%", height: 250 },
+                            React.createElement(AreaChart, { data: results.cf },
+                                React.createElement(CartesianGrid, { strokeDasharray: "3 3", stroke: "#334155" }),
+                                React.createElement(XAxis, { dataKey: "year", stroke: "#94a3b8" }),
+                                React.createElement(YAxis, { stroke: "#94a3b8", tickFormatter: v => fmtK(v) }),
+                                React.createElement(Tooltip, { contentStyle: { backgroundColor: '#1e293b', border: '1px solid #334155' }, formatter: v => '$' + fmtN(Math.round(v)) }),
+                                React.createElement(ReferenceLine, { y: 0, stroke: "#475569" }),
+                                React.createElement(Area, { type: "monotone", dataKey: "savings", stroke: "#22c55e", fill: "#22c55e", fillOpacity: 0.3, name: "Savings vs Diesel" })))),
+                    React.createElement("div", { className: "rounded-lg p-5 border border-slate-700", style: { background: COLORS.card } },
+                        React.createElement("h2", { className: "text-lg font-bold mb-3" }, "Annual Opex Breakdown"),
+                        React.createElement(ResponsiveContainer, { width: "100%", height: 320 },
+                            React.createElement(BarChart, { data: results.annualCosts.filter(function (_, i) { return i % 2 === 0 || i === results.annualCosts.length - 1; }) },
+                                React.createElement(CartesianGrid, { strokeDasharray: "3 3", stroke: "#334155" }),
+                                React.createElement(XAxis, { dataKey: "year", stroke: "#94a3b8" }),
+                                React.createElement(YAxis, { stroke: "#94a3b8", tickFormatter: function (v) { return fmtK(v); } }),
+                                React.createElement(Tooltip, { contentStyle: { backgroundColor: '#1e293b', border: '1px solid #334155' }, formatter: function (v) { return '$' + fmtN(v); } }),
+                                React.createElement(Legend, null),
+                                React.createElement(Bar, { dataKey: "hybridFuel", fill: "#f59e0b", name: "Hybrid Fuel", stackId: "h" }),
+                                React.createElement(Bar, { dataKey: "hybridMaint", fill: "#3b82f6", name: "Hybrid O&M", stackId: "h" }),
+                                React.createElement(Bar, { dataKey: "hybridInsurance", fill: "#8b5cf6", name: "Hybrid Ins.", stackId: "h" }),
+                                React.createElement(Bar, { dataKey: "hybridSite", fill: "#06b6d4", name: "Hybrid Site", stackId: "h" }),
+                                React.createElement(Bar, { dataKey: "dieselFuel", fill: "#ef4444", name: "Diesel Fuel", stackId: "d" }),
+                                React.createElement(Bar, { dataKey: "dieselMaint", fill: "#f97316", name: "Diesel O&M", stackId: "d" }),
+                                React.createElement(Bar, { dataKey: "dieselInsurance", fill: "#a855f7", name: "Diesel Ins.", stackId: "d" })))),
+                    React.createElement("div", { className: "rounded-lg p-5 border border-slate-700", style: { background: COLORS.card } },
+                        React.createElement("h2", { className: "text-lg font-bold mb-3" }, "Year 1 OPEX Detail"),
+                        React.createElement("div", { className: "grid grid-cols-2 gap-6" },
+                            React.createElement("div", null,
+                                React.createElement("h3", { className: "text-emerald-400 text-sm font-semibold mb-2" }, "Hybrid System"),
+                                React.createElement("table", { className: "w-full text-sm" },
+                                    React.createElement("tbody", null,
+                                        [['Solar PV O&M', results.yr1PvOM], ['Battery O&M', results.yr1BattOM], ['Diesel O&M', results.yr1DieselOM], ['Fuel', results.yr1Fuel], ['Insurance', results.yr1Ins], ['Site/Fixed', results.yr1Site]].filter(function (r) { return r[1]; }).map(function (r) { return React.createElement("tr", { key: r[0], className: "border-b border-slate-700" },
+                                            React.createElement("td", { className: "py-1.5 text-slate-400" }, r[0]),
+                                            React.createElement("td", { className: "py-1.5 text-right font-medium" }, '$' + fmtN(r[1])),
+                                            React.createElement("td", { className: "py-1.5 text-right text-xs text-slate-500 w-16" }, results.yr1HOpex ? Math.round(r[1] / results.yr1HOpex * 100) + '%' : '-')); }),
+                                        React.createElement("tr", { className: "font-bold" },
+                                            React.createElement("td", { className: "pt-2 text-emerald-400" }, "Total"),
+                                            React.createElement("td", { className: "pt-2 text-right text-emerald-400" }, '$' + fmtN(results.yr1HOpex)),
+                                            React.createElement("td", { className: "pt-2 text-right text-xs text-emerald-400" }, "100%"))))),
+                            React.createElement("div", null,
+                                React.createElement("h3", { className: "text-red-400 text-sm font-semibold mb-2" }, "Diesel Only"),
+                                React.createElement("table", { className: "w-full text-sm" },
+                                    React.createElement("tbody", null,
+                                        [['Diesel O&M', results.yr1DMaint], ['Fuel', results.yr1DFuel], ['Insurance', results.yr1DIns]].filter(function (r) { return r[1]; }).map(function (r) { return React.createElement("tr", { key: r[0], className: "border-b border-slate-700" },
+                                            React.createElement("td", { className: "py-1.5 text-slate-400" }, r[0]),
+                                            React.createElement("td", { className: "py-1.5 text-right font-medium" }, '$' + fmtN(r[1])),
+                                            React.createElement("td", { className: "py-1.5 text-right text-xs text-slate-500 w-16" }, results.yr1DOpex ? Math.round(r[1] / results.yr1DOpex * 100) + '%' : '-')); }),
+                                        React.createElement("tr", { className: "font-bold" },
+                                            React.createElement("td", { className: "pt-2 text-red-400" }, "Total"),
+                                            React.createElement("td", { className: "pt-2 text-right text-red-400" }, '$' + fmtN(results.yr1DOpex)),
+                                            React.createElement("td", { className: "pt-2 text-right text-xs text-red-400" }, "100%")))))),
+                        React.createElement("div", { className: "mt-4 pt-3 border-t border-slate-700 grid grid-cols-3 gap-3 text-sm" },
+                            React.createElement("div", { className: "text-slate-400" },
+                                "Yr1 OPEX Saving: ",
+                                React.createElement("strong", { className: "text-green-400" }, '$' + fmtN(results.yr1DOpex - results.yr1HOpex))),
+                            React.createElement("div", { className: "text-slate-400" },
+                                "OPEX/kWh (Hybrid): ",
+                                React.createElement("strong", null,
+                                    (results.yr1HOpex / results.annual).toFixed(3),
+                                    " $/kWh")),
+                            React.createElement("div", { className: "text-slate-400" },
+                                "OPEX/kWh (Diesel): ",
+                                React.createElement("strong", null,
+                                    (results.yr1DOpex / results.annual).toFixed(3),
+                                    " $/kWh")))))),
+                subTab === 'sensitivity' && (React.createElement("div", { className: "space-y-4" },
+                    React.createElement("div", { className: "rounded-lg p-5 border border-slate-700", style: { background: COLORS.card } },
+                        React.createElement("h2", { className: "text-lg font-bold mb-3" }, "Fuel Price Sensitivity"),
+                        React.createElement(ResponsiveContainer, { width: "100%", height: 300 },
+                            React.createElement(ComposedChart, { data: results.sensFuel },
+                                React.createElement(CartesianGrid, { strokeDasharray: "3 3", stroke: "#334155" }),
+                                React.createElement(XAxis, { dataKey: "fuelPrice", stroke: "#94a3b8" }),
+                                React.createElement(YAxis, { yAxisId: "left", stroke: "#94a3b8" }),
+                                React.createElement(YAxis, { yAxisId: "right", orientation: "right", stroke: "#22c55e" }),
+                                React.createElement(Tooltip, { contentStyle: { backgroundColor: '#1e293b', border: '1px solid #334155' } }),
+                                React.createElement(Legend, null),
+                                React.createElement(Line, { yAxisId: "left", type: "monotone", dataKey: "hybridLCOE", stroke: "#10b981", strokeWidth: 3, name: "Hybrid LCOE", dot: true }),
+                                React.createElement(Line, { yAxisId: "left", type: "monotone", dataKey: "dieselLCOE", stroke: "#ef4444", strokeWidth: 3, name: "Diesel LCOE", dot: true }),
+                                React.createElement(Bar, { yAxisId: "right", dataKey: "savings", fill: "#22c55e", fillOpacity: 0.3, name: "Savings ($K)" }))),
+                        React.createElement("p", { className: "text-xs text-slate-500 mt-2" },
+                            "Current: $",
+                            costs.fuel,
+                            "/L. Higher fuel prices increase hybrid advantage.")),
+                    React.createElement("div", { className: "rounded-lg p-5 border border-slate-700", style: { background: COLORS.card } },
+                        React.createElement("h2", { className: "text-lg font-bold mb-3" }, "Renewable Fraction vs System Size"),
+                        React.createElement(ResponsiveContainer, { width: "100%", height: 280 },
+                            React.createElement(ComposedChart, { data: results.sensRenew },
+                                React.createElement(CartesianGrid, { strokeDasharray: "3 3", stroke: "#334155" }),
+                                React.createElement(XAxis, { dataKey: "renewPct", stroke: "#94a3b8" }),
+                                React.createElement(YAxis, { yAxisId: "left", stroke: "#94a3b8" }),
+                                React.createElement(YAxis, { yAxisId: "right", orientation: "right", stroke: "#94a3b8" }),
+                                React.createElement(Tooltip, { contentStyle: { backgroundColor: '#1e293b', border: '1px solid #334155' } }),
+                                React.createElement(Legend, null),
+                                React.createElement(Bar, { yAxisId: "right", dataKey: "capex", fill: "#8b5cf6", fillOpacity: 0.4, name: "CAPEX ($K)" }),
+                                React.createElement(Line, { yAxisId: "left", type: "monotone", dataKey: "pvSize", stroke: "#f59e0b", strokeWidth: 2, name: "PV (kW)" }),
+                                React.createElement(Line, { yAxisId: "left", type: "monotone", dataKey: "battSize", stroke: "#3b82f6", strokeWidth: 2, name: "Batt (kWh)" })))))),
+                subTab === 'environmental' && (React.createElement("div", { className: "space-y-4" },
+                    React.createElement("div", { className: "grid grid-cols-4 gap-3" },
+                        React.createElement(Stat, { label: "CO2 Saved", value: fmtN(results.co2S) + ' t/yr', color: "from-green-700/40 to-green-900/40" }),
+                        React.createElement(Stat, { label: "Lifetime CO2", value: fmtN(results.co2S * finance.projectLife) + ' t', color: "from-green-700/40 to-green-900/40" }),
+                        React.createElement(Stat, { label: "Fuel Saved", value: fmtN(results.dieselOnlyFuelAnn - results.dieselFuelAnn) + ' L/yr', sub: Math.round((1 - results.dieselFuelAnn / results.dieselOnlyFuelAnn) * 100) + '% reduction', color: "from-emerald-700/40 to-emerald-900/40" }),
+                        React.createElement(Stat, { label: "Trees Equiv", value: '~' + fmtN(results.treesEquiv), sub: "per year", color: "from-lime-700/40 to-lime-900/40" })),
+                    React.createElement("div", { className: "grid grid-cols-2 gap-4" },
+                        React.createElement("div", { className: "rounded-lg p-5 border border-slate-700", style: { background: COLORS.card } },
+                            React.createElement("h2", { className: "text-lg font-bold mb-3" }, "CO2 Emissions"),
+                            React.createElement(ResponsiveContainer, { width: "100%", height: 250 },
+                                React.createElement(BarChart, { data: [{ s: 'Diesel Only', v: results.co2D }, { s: 'Hybrid', v: results.co2H }] },
+                                    React.createElement(CartesianGrid, { strokeDasharray: "3 3", stroke: "#334155" }),
+                                    React.createElement(XAxis, { dataKey: "s", stroke: "#94a3b8" }),
+                                    React.createElement(YAxis, { stroke: "#94a3b8" }),
+                                    React.createElement(Tooltip, { contentStyle: { backgroundColor: '#1e293b', border: '1px solid #334155' }, formatter: v => fmtN(v) + ' t' }),
+                                    React.createElement(Bar, { dataKey: "v", radius: [4, 4, 0, 0] },
+                                        React.createElement(Cell, { fill: "#ef4444" }),
+                                        React.createElement(Cell, { fill: "#10b981" }))))),
+                        React.createElement("div", { className: "rounded-lg p-5 border border-slate-700", style: { background: COLORS.card } },
+                            React.createElement("h2", { className: "text-lg font-bold mb-3" }, "Annual Fuel"),
+                            React.createElement(ResponsiveContainer, { width: "100%", height: 250 },
+                                React.createElement(BarChart, { data: [{ s: 'Diesel Only', v: results.dieselOnlyFuelAnn }, { s: 'Hybrid', v: results.dieselFuelAnn }] },
+                                    React.createElement(CartesianGrid, { strokeDasharray: "3 3", stroke: "#334155" }),
+                                    React.createElement(XAxis, { dataKey: "s", stroke: "#94a3b8" }),
+                                    React.createElement(YAxis, { stroke: "#94a3b8" }),
+                                    React.createElement(Tooltip, { contentStyle: { backgroundColor: '#1e293b', border: '1px solid #334155' }, formatter: v => fmtN(v) + ' L' }),
+                                    React.createElement(Bar, { dataKey: "v", radius: [4, 4, 0, 0] },
+                                        React.createElement(Cell, { fill: "#f97316" }),
+                                        React.createElement(Cell, { fill: "#22c55e" })))))))))),
+            tab === 'report' && results && (React.createElement("div", { className: "rounded-lg p-6 border border-slate-700", style: { background: COLORS.card } },
+                React.createElement("div", { className: "flex items-center justify-between mb-6" },
+                    React.createElement("div", null,
+                        React.createElement("h1", { className: "text-2xl font-bold" }, projectInfo.name),
+                        React.createElement("p", { className: "text-slate-400 text-sm" },
+                            location.name,
+                            " \u2014 Rev ",
+                            projectInfo.revision,
+                            " \u2014 ",
+                            projectInfo.date)),
+                    React.createElement("button", { onClick: generateReport, className: "flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 px-5 py-2.5 rounded-lg text-sm font-medium transition-colors" },
+                        React.createElement("span", null, "\uD83D\uDCE5"),
+                        " Download HTML Report")),
+                React.createElement("div", { className: "grid grid-cols-4 gap-4 mb-6" },
+                    React.createElement(Stat, { label: "Solar PV", value: fmtN(results.pv) + ' kWp DC', sub: 'Inverter: ' + fmtN(results.pvInverter) + ' kW AC', color: "from-amber-700/40 to-amber-900/40" }),
+                    React.createElement(Stat, { label: "Battery", value: fmtN(results.batt) + ' kWh', sub: results.pow + ' kW', color: "from-blue-700/40 to-blue-900/40" }),
+                    React.createElement(Stat, { label: "Diesel", value: fmtN(results.diesel) + ' kW', color: "from-red-700/40 to-red-900/40" }),
+                    React.createElement(Stat, { label: "NPV Savings", value: fmtK(results.npv), sub: 'Payback: ' + results.payback + ' yrs', color: "from-emerald-700/40 to-emerald-900/40" })),
+                React.createElement("div", { className: "bg-emerald-900/20 border border-emerald-700/40 rounded-lg p-4 mb-4" },
+                    React.createElement("h3", { className: "text-emerald-400 font-semibold mb-2" }, "Key Metrics"),
+                    React.createElement("div", { className: "grid grid-cols-3 gap-4 text-sm" },
+                        React.createElement("div", null,
+                            "LCOE Hybrid: ",
+                            React.createElement("strong", null,
+                                results.lcoeH,
+                                " $/kWh")),
+                        React.createElement("div", null,
+                            "LCOE Diesel: ",
+                            React.createElement("strong", null,
+                                results.lcoeD,
+                                " $/kWh")),
+                        React.createElement("div", null,
+                            "Annual Savings: ",
+                            React.createElement("strong", null, '$' + fmtN(results.savings))),
+                        React.createElement("div", null,
+                            "Yr1 OPEX (Hybrid): ",
+                            React.createElement("strong", null, '$' + fmtN(results.yr1HOpex))),
+                        React.createElement("div", null,
+                            "Yr1 OPEX (Diesel): ",
+                            React.createElement("strong", null, '$' + fmtN(results.yr1DOpex))),
+                        React.createElement("div", null,
+                            "Yr1 OPEX Saving: ",
+                            React.createElement("strong", null, '$' + fmtN(results.yr1DOpex - results.yr1HOpex))),
+                        React.createElement("div", null,
+                            finance.projectLife,
+                            "-Yr Savings: ",
+                            React.createElement("strong", null, '$' + fmtN(results.savings * finance.projectLife))),
+                        React.createElement("div", null,
+                            "CO2 Reduction: ",
+                            React.createElement("strong", null,
+                                fmtN(results.co2S),
+                                " t/yr")),
+                        React.createElement("div", null,
+                            "Fuel Reduction: ",
+                            React.createElement("strong", null,
+                                Math.round((1 - results.dieselFuelAnn / results.dieselOnlyFuelAnn) * 100),
+                                "%")))),
+                React.createElement("div", { className: "bg-slate-900/50 rounded-lg p-4" },
+                    React.createElement("h3", { className: "text-slate-300 font-semibold mb-2" }, "Report Contents"),
+                    React.createElement("div", { className: "grid grid-cols-2 gap-2 text-sm text-slate-400" }, ['Cover page', 'Executive summary', 'Site & load analysis', 'System specifications', 'Monthly energy tables', 'CAPEX breakdown', 'OPEX breakdown', 'LCOE & payback', 'Fuel sensitivity', 'Environmental impact', 'Assumptions & disclaimer'].map(c => React.createElement("div", { key: c }, '✓ ' + c)))),
+                React.createElement("p", { className: "text-xs text-slate-500 mt-4" }, "Export creates a self-contained HTML file. Open in browser and print to PDF for client distribution."))),
+            tab !== 'config' && !results && (React.createElement("div", { className: "text-center py-20 text-slate-500" },
+                React.createElement("span", null, "\u2699\uFE0F"),
+                React.createElement("p", { className: "text-lg" },
+                    "Configure your system and click ",
+                    React.createElement("strong", { className: "text-emerald-400" }, "Calculate"),
+                    " to see results."))))));
+}
+
+
+
+
+createRoot(document.getElementById('root')).render(React.createElement(HybridPowerSizing));
+
+} catch(e) {
+  document.getElementById('root').innerHTML = '<div style="padding:40px;background:#1a0000;color:#ff6666;font-family:monospace;white-space:pre-wrap;font-size:13px">INIT ERROR: ' + e.message + '\n' + e.stack + '</div>';
+}
+</script>
+</body>
+</html>
